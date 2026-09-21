@@ -83,9 +83,17 @@ jobs:
           ${{ matrix.extra_cmake }}
 
       - name: Build
+        if: runner.os != 'Windows'
         run: cmake --build build --config Release --parallel
 
+      - name: Build Windows deliverables
+        if: runner.os == 'Windows'
+        run: >
+          cmake --build build --config Release --parallel
+          --target g1run g1gui g1vst3_VST3
+
       - name: Test
+        if: runner.os != 'Windows'
         run: ctest --test-dir build -C Release -L g1 --output-on-failure
 
       - name: Check the macOS binary
