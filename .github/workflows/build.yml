@@ -1,19 +1,9 @@
 # Builds G1-Emu on the three systems it is meant to run on.
-#
-# No ROM is needed and none is ever fetched: the emulator only reads one when it runs, and this
-# workflow never runs it. What it proves is that the code compiles and that the DSP tests pass,
-# which is the part nobody can check by hand on three machines.
-#
-# The two dependencies are clones, not copies (see the README): Gearmulator for the DSP and 68k
-# cores, and JUCE for the window and — off Linux — for audio and MIDI.
-
 name: build
 
 on:
   push:
     branches: [main]
-    # A tag is what publishes a release: the same matrix builds, and the job at the end
-    # collects the five packages and attaches them (see the release job).
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -34,21 +24,14 @@ jobs:
             os: ubuntu-latest
             backend: juce
             artifact: linux-x86_64-juce
-          # The only other AArch64 machine available here. It runs the same JIT as Apple Silicon,
-          # so it says whether a failure there is in the code we generate or in what macOS does
-          # with it (W^X, icache). Free for public repositories.
           - name: Linux arm64 (native ALSA/JACK)
             os: ubuntu-24.04-arm
             backend: native
             artifact: linux-arm64-native
-          # Universal, and with a deployment target set by hand: CMake otherwise inherits the
-          # runner's own macOS (26 today), and the binary then refuses to start on anything
-          # older — Ventura included, Apple Silicon or not. 11.0 is the floor for arm64.
           - name: macOS
             os: macos-latest
             backend: juce
             artifact: macos-universal
-            # Quoted: the semicolon would otherwise end the command in the shell.
             extra_cmake: '"-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0'
           - name: Windows
             os: windows-latest
@@ -75,6 +58,13 @@ jobs:
           ref: 8.0.12
           path: JUCE
 
+      - name: Animatek NME patch/editor sources
+        uses: actions/checkout@v4
+        with:
+          repository: animatek/Animatek-NME
+          path: Animatek-NME
+          submodules: false
+
       - name: Linux build dependencies
         if: runner.os == 'Linux'
         run: |
@@ -88,28 +78,16 @@ jobs:
           cmake -B build -S G1-Emu -DCMAKE_BUILD_TYPE=Release
           -DGEARMULATOR_DIR=${{ github.workspace }}/gearmulator-md-mm
           -DG1_JUCE_DIR=${{ github.workspace }}/JUCE
+          -DNME_DIR=${{ github.workspace }}/Animatek-NME
           -DG1_BACKEND=${{ matrix.backend }}
           ${{ matrix.extra_cmake }}
 
       - name: Build
         run: cmake --build build --config Release --parallel
 
-      # Our own tests (label g1): the DSP core checks, which need no ROM, no sound card and no
-      # MIDI. Gearmulator registers its own from its tree, but their binaries are EXCLUDE_FROM_ALL
-      # here and never get built, so running everything would report them as failures.
       - name: Test
         run: ctest --test-dir build -C Release -L g1 --output-on-failure
 
-      # The binaries, so somebody with a Mac or a Windows machine can try them without building
-      # anything. No ROM is included, here or anywhere else: the emulator looks for one when it
-      # runs and says where to put it (see the README). Nothing is signed or notarised, so macOS
-      # and Windows will warn about an unidentified developer.
-      #
-      # An artifact is a zip and a zip loses the executable bit, so everything but Windows is
-      # tarred first.
-      # What the binary claims about itself is the whole point of the flags above, so it is
-      # checked rather than assumed: both slices present, and a minimum macOS that is not the
-      # runner's.
       - name: Check the macOS binary
         if: runner.os == 'macOS'
         run: |
@@ -148,8 +126,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # Only on a tag. It does not build anything: it takes what the matrix already produced,
-  # so what people download is the very same binary the tests ran against.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
@@ -173,7 +149,6 @@ jobs:
           (cd artifacts/G1-Emu-windows-x86_64 && zip -r "$GITHUB_WORKSPACE/release/G1-Emu-windows-x86_64.zip" .)
           ls -l release
 
-      # Pre-release on purpose: it is a test build, and it must not look like a finished one.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
