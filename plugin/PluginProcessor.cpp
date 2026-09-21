@@ -68,6 +68,37 @@ bool G1PluginProcessor::loadPatch(const juce::File& f,juce::String& error){
  runFor(*mc,300*g_ms);native.clear();emuTimeCycles=(double)mc->ucCycles();currentPatchPath=f.getFullPathName();
  lastStatus="Patch loaded: "+patch->getName()+" (slot 1, PID "+juce::String(pid)+")";error.clear();suspendProcessing(false);return true;
 }
+void G1PluginProcessor::panic()
+{
+    suspendProcessing(true);
+
+    {
+        std::lock_guard lock(machineMutex);
+
+        if (mc)
+        {
+            for (int ch = 0; ch < 16; ++ch)
+            {
+                const uint8_t status = static_cast<uint8_t>(0xB0 | ch);
+
+                // All Notes Off
+                mc->getSci().write({ status, 123, 0 });
+
+                // All Sound Off
+                mc->getSci().write({ status, 120, 0 });
+            }
+
+            runFor(*mc, 20 * g_ms);
+
+            native.clear();
+            emuTimeCycles = static_cast<double>(mc->ucCycles());
+
+            lastStatus = "MIDI panic sent on all 16 channels.";
+        }
+    }
+
+    suspendProcessing(false);
+}
 void G1PluginProcessor::advanceTo(uint64_t t){if(mc)while(mc->ucCycles()<t)mc->exec();}
 void G1PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuffer& midi){juce::ScopedNoDenormals nd;buffer.clear();std::lock_guard lock(machineMutex);if(!mc)return;native.clear();int n=buffer.getNumSamples(),cursor=0;for(const auto meta:midi){int pos=juce::jlimit(0,n,meta.samplePosition);emuTimeCycles+=(pos-cursor)*(double)g1::g_ucClock/hostRate;advanceTo((uint64_t)std::llround(emuTimeCycles));const auto msg=meta.getMessage();auto*p=msg.getRawData();int sz=msg.getRawDataSize();if(p&&sz>0){mc->getSci().write(std::vector<uint8_t>(p,p+sz));++midiMessages;midiBytes.fetch_add((uint64_t)sz);}cursor=pos;}emuTimeCycles+=(n-cursor)*(double)g1::g_ucClock/hostRate;advanceTo((uint64_t)std::llround(emuTimeCycles));midi.clear();if(native.empty())return;for(int i=0;i<n;++i){double x=n>1?(double)i*(native.size()-1)/(n-1):0;size_t a=(size_t)x,b=std::min(a+1,native.size()-1);float t=(float)(x-a);for(int ch=0;ch<std::min(4,buffer.getNumChannels());++ch)buffer.setSample(ch,i,native[a][ch]+(native[b][ch]-native[a][ch])*t);}}
 juce::String G1PluginProcessor::diagnostics(){std::lock_guard lock(machineMutex);if(!mc)return"ROM required";juce::String s;s<<"CPU: "<<juce::String((juce::int64)mc->ucCycles())<<" cycles | PIT: "<<juce::String((juce::int64)mc->pitIrqs())<<"\n";s<<"MIDI -> SCI: "<<juce::String((juce::int64)midiMessages.load())<<" msgs / "<<juce::String((juce::int64)midiBytes.load())<<" bytes | SCI reads: "<<(int)mc->sciDataReads()<<"\n";s<<"DSP booted/count: ";for(int i=0;i<4;++i){auto&d=mc->getDsp((uint32_t)i);s<<i<<":"<<(d.booted()?"Y":"N")<<"/"<<(int)d.bootCount()<<(i<3?"  ":"");}s<<"\nDSP IRQD: ";for(int i=0;i<4;++i)s<<i<<":"<<juce::String((juce::int64)mc->getDsp((uint32_t)i).irqdCount())<<(i<3?"  ":"");s<<"\nDSP3 frames: "<<juce::String((juce::int64)mc->getDsp(3).audioFrames())<<" | output blocks: "<<juce::String((juce::int64)audioBlocks.load())<<"\nOutput peak raw: ";for(int i=0;i<4;++i)s<<(i+1)<<":"<<(int)outputPeak[i].load()<<(i<3?"  ":"");return s;}
