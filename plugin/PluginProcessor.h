@@ -4,6 +4,7 @@
 #include <juce_core/juce_core.h>
 #include "g1Lib/g1mc.h"
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <memory>
 #include <mutex>
@@ -36,6 +37,7 @@ public:
     bool loadRom(const juce::File&, juce::String& error);
     juce::String romPath() const;
     juce::String status() const;
+    juce::String diagnostics();
     g1::Microcontroller* machine() const { return mc.get(); }
 
 private:
@@ -52,5 +54,7 @@ private:
     std::vector<std::array<float,4>> native;
     std::mutex machineMutex;
     juce::String lastStatus = "Select a Nord Modular G1 512 KB ROM to begin.";
+    std::atomic<uint64_t> midiMessages{0}, midiBytes{0}, audioBlocks{0};
+    std::array<std::atomic<uint32_t>,4> outputPeak{};
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(G1PluginProcessor)
 };

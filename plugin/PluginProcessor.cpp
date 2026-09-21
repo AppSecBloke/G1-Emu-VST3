@@ -35,10 +35,17 @@ void G1PluginProcessor::resetMachine(const std::vector<uint8_t>& rom, const std:
     mc = std::make_unique<g1::Microcontroller>(rom);
     if(flash && flash->size() == g1::Flash::Size) mc->getFlash().data() = *flash;
     else mc->installRomOsInFlash();
-    native.clear();
+    native.clear(); midiMessages = 0; midiBytes = 0; audioBlocks = 0;
+    for(auto& p : outputPeak) p = 0;
     mc->getDsp(0).setInputProvider([](int32_t& l, int32_t& r){ l = r = 0; });
     mc->getDsp(3).setBlockCallback([this](int32_t a, int32_t b, int32_t c, int32_t d)
     {
+        const std::array<int32_t,4> raw{a,b,c,d};
+        for(size_t i=0;i<4;++i) {
+            const auto v = raw[i] - dc; const auto av = static_cast<uint32_t>(v < 0 ? -static_cast<int64_t>(v) : v);
+            auto old = outputPeak[i].load(); while(av > old && !outputPeak[i].compare_exchange_weak(old,av)) {}
+        }
+        ++audioBlocks;
         native.push_back({(a-dc)*scale24*gain, (b-dc)*scale24*gain, (c-dc)*scale24*gain, (d-dc)*scale24*gain});
     });
     emuTimeCycles = 0.0;
@@ -49,95 +56,38 @@ bool G1PluginProcessor::loadRom(const juce::File& f, juce::String& error)
     std::vector<uint8_t> bytes;
     if(!readAndValidateRom(f, bytes, error)) return false;
     suspendProcessing(true);
-    {
-        std::lock_guard lock(machineMutex);
-        romBytes = bytes;
-        currentRomPath = f.getFullPathName();
-        resetMachine(romBytes);
-        lastStatus = "ROM loaded. G1 is booting inside the plug-in.";
-    }
-    suspendProcessing(false);
-    return true;
+    { std::lock_guard lock(machineMutex); romBytes = bytes; currentRomPath = f.getFullPathName(); resetMachine(romBytes); lastStatus = "ROM loaded. G1 is booting inside the plug-in."; }
+    suspendProcessing(false); return true;
 }
 
-void G1PluginProcessor::advanceTo(uint64_t target)
-{
-    if(!mc) return;
-    while(mc->ucCycles() < target) mc->exec();
-}
+void G1PluginProcessor::advanceTo(uint64_t target) { if(mc) while(mc->ucCycles() < target) mc->exec(); }
 
 void G1PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
-    juce::ScopedNoDenormals noDenormals;
-    buffer.clear();
-    std::lock_guard lock(machineMutex);
-    if(!mc) return;
-
-    native.clear();
-    const int n = buffer.getNumSamples();
-    int cursor = 0;
-    for(const auto meta : midi)
-    {
-        const int pos = juce::jlimit(0, n, meta.samplePosition);
-        emuTimeCycles += (pos - cursor) * (double)g1::g_ucClock / hostRate;
-        advanceTo((uint64_t)std::llround(emuTimeCycles));
-        const auto& msg = meta.getMessage();
-        const auto* p = msg.getRawData();
-        const int sz = msg.getRawDataSize();
-        if(p && sz > 0) mc->getSci().write(std::vector<uint8_t>(p, p + sz));
-        cursor = pos;
+    juce::ScopedNoDenormals noDenormals; buffer.clear(); std::lock_guard lock(machineMutex); if(!mc) return;
+    native.clear(); const int n=buffer.getNumSamples(); int cursor=0;
+    for(const auto meta : midi) {
+        const int pos=juce::jlimit(0,n,meta.samplePosition); emuTimeCycles += (pos-cursor)*(double)g1::g_ucClock/hostRate; advanceTo((uint64_t)std::llround(emuTimeCycles));
+        const auto& msg=meta.getMessage(); const auto* p=msg.getRawData(); const int sz=msg.getRawDataSize();
+        if(p && sz>0) { mc->getSci().write(std::vector<uint8_t>(p,p+sz)); ++midiMessages; midiBytes += (uint64_t)sz; } cursor=pos;
     }
-    emuTimeCycles += (n - cursor) * (double)g1::g_ucClock / hostRate;
-    advanceTo((uint64_t)std::llround(emuTimeCycles));
-    midi.clear();
-
+    emuTimeCycles += (n-cursor)*(double)g1::g_ucClock/hostRate; advanceTo((uint64_t)std::llround(emuTimeCycles)); midi.clear();
     if(native.empty()) return;
-    // DSP audio is natively 96 kHz. Resample the samples produced during this host block to
-    // exactly the number the DAW requested. Linear interpolation is deliberately simple for v0.1.
-    for(int i=0; i<n; ++i)
-    {
-        const double x = n > 1 ? (double)i * (native.size()-1) / (double)(n-1) : 0.0;
-        const size_t a = (size_t)x;
-        const size_t b = std::min(a + 1, native.size()-1);
-        const float t = (float)(x - (double)a);
-        for(int ch=0; ch<std::min(4, buffer.getNumChannels()); ++ch)
-            buffer.setSample(ch, i, native[a][ch] + (native[b][ch] - native[a][ch]) * t);
-    }
+    for(int i=0;i<n;++i) { const double x=n>1?(double)i*(native.size()-1)/(double)(n-1):0.0; const size_t a=(size_t)x,b=std::min(a+1,native.size()-1); const float t=(float)(x-(double)a); for(int ch=0;ch<std::min(4,buffer.getNumChannels());++ch) buffer.setSample(ch,i,native[a][ch]+(native[b][ch]-native[a][ch])*t); }
 }
 
-void G1PluginProcessor::getStateInformation(juce::MemoryBlock& dest)
+juce::String G1PluginProcessor::diagnostics()
 {
-    std::lock_guard lock(machineMutex);
-    juce::MemoryOutputStream s(dest, false);
-    s.writeInt(0x47314531); // G1E1
-    s.writeString(currentRomPath);
-    if(mc) {
-        const auto& f = mc->getFlash().data();
-        s.writeInt((int)f.size());
-        s.write(f.data(), f.size());
-    } else s.writeInt(0);
+    std::lock_guard lock(machineMutex); if(!mc) return "ROM required";
+    juce::String s; s << "CPU: " << juce::String((int64)mc->ucCycles()) << " cycles | PIT: " << juce::String((int64)mc->pitIrqs()) << "\n";
+    s << "MIDI -> SCI: " << juce::String((int64)midiMessages.load()) << " msgs / " << juce::String((int64)midiBytes.load()) << " bytes | SCI reads: " << (int)mc->sciDataReads() << "\n";
+    s << "DSP booted/count: "; for(int i=0;i<4;++i) { auto& d=mc->getDsp((uint32_t)i); s << i << ":" << (d.booted()?"Y":"N") << "/" << (int)d.bootCount(); if(i<3)s << "  "; } s << "\n";
+    s << "DSP IRQD: "; for(int i=0;i<4;++i) { s << i << ":" << juce::String((int64)mc->getDsp((uint32_t)i).irqdCount()); if(i<3)s << "  "; } s << "\n";
+    s << "DSP3 frames: " << juce::String((int64)mc->getDsp(3).audioFrames()) << " | output blocks: " << juce::String((int64)audioBlocks.load()) << "\n";
+    s << "Output peak raw: "; for(int i=0;i<4;++i) { s << (i+1) << ":" << (int)outputPeak[i].load(); if(i<3)s << "  "; }
+    return s;
 }
 
-void G1PluginProcessor::setStateInformation(const void* data, int size)
-{
-    juce::MemoryInputStream s(data, (size_t)size, false);
-    if(s.readInt() != 0x47314531) return;
-    const auto path = s.readString();
-    const int flashSize = s.readInt();
-    std::vector<uint8_t> flash;
-    if(flashSize == (int)g1::Flash::Size && s.getNumBytesRemaining() >= flashSize) {
-        flash.resize((size_t)flashSize); s.read(flash.data(), flash.size());
-    }
-    if(path.isEmpty()) return;
-    std::vector<uint8_t> bytes; juce::String err;
-    if(!readAndValidateRom(juce::File(path), bytes, err)) { lastStatus = "Saved ROM could not be loaded: " + err; return; }
-    std::lock_guard lock(machineMutex);
-    romBytes = std::move(bytes); currentRomPath = path;
-    resetMachine(romBytes, flash.empty() ? nullptr : &flash);
-    lastStatus = "Session state restored.";
-}
-
-juce::String G1PluginProcessor::romPath() const { return currentRomPath; }
-juce::String G1PluginProcessor::status() const { return lastStatus; }
-juce::AudioProcessorEditor* G1PluginProcessor::createEditor() { return new G1PluginEditor(*this); }
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new G1PluginProcessor(); }
+void G1PluginProcessor::getStateInformation(juce::MemoryBlock& dest) { std::lock_guard lock(machineMutex); juce::MemoryOutputStream s(dest,false); s.writeInt(0x47314531); s.writeString(currentRomPath); if(mc){const auto& f=mc->getFlash().data();s.writeInt((int)f.size());s.write(f.data(),f.size());}else s.writeInt(0);}
+void G1PluginProcessor::setStateInformation(const void* data,int size) { juce::MemoryInputStream s(data,(size_t)size,false); if(s.readInt()!=0x47314531)return; const auto path=s.readString(); const int flashSize=s.readInt(); std::vector<uint8_t> flash; if(flashSize==(int)g1::Flash::Size&&s.getNumBytesRemaining()>=flashSize){flash.resize((size_t)flashSize);s.read(flash.data(),flash.size());} if(path.isEmpty())return; std::vector<uint8_t> bytes;juce::String err;if(!readAndValidateRom(juce::File(path),bytes,err)){lastStatus="Saved ROM could not be loaded: "+err;return;} std::lock_guard lock(machineMutex);romBytes=std::move(bytes);currentRomPath=path;resetMachine(romBytes,flash.empty()?nullptr:&flash);lastStatus="Session state restored.";}
+juce::String G1PluginProcessor::romPath() const{return currentRomPath;} juce::String G1PluginProcessor::status() const{return lastStatus;} juce::AudioProcessorEditor* G1PluginProcessor::createEditor(){return new G1PluginEditor(*this);} juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter(){return new G1PluginProcessor();}
