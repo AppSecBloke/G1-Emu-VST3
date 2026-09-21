@@ -127,6 +127,82 @@ void G1PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::Midi
  }
 }
 juce::String G1PluginProcessor::diagnostics(){std::lock_guard lock(machineMutex);if(!mc)return"ROM required";juce::String s;s<<"CPU: "<<juce::String((juce::int64)mc->ucCycles())<<" cycles | PIT: "<<juce::String((juce::int64)mc->pitIrqs())<<"\n";s<<"MIDI -> SCI: "<<juce::String((juce::int64)midiMessages.load())<<" msgs / "<<juce::String((juce::int64)midiBytes.load())<<" bytes | SCI reads: "<<(int)mc->sciDataReads()<<"\n";s<<"DSP booted/count: ";for(int i=0;i<4;++i){auto&d=mc->getDsp((uint32_t)i);s<<i<<":"<<(d.booted()?"Y":"N")<<"/"<<(int)d.bootCount()<<(i<3?"  ":"");}s<<"\nDSP IRQD: ";for(int i=0;i<4;++i)s<<i<<":"<<juce::String((juce::int64)mc->getDsp((uint32_t)i).irqdCount())<<(i<3?"  ":"");s<<"\nDSP3 frames: "<<juce::String((juce::int64)mc->getDsp(3).audioFrames())<<" | output blocks: "<<juce::String((juce::int64)audioBlocks.load())<<"\nOutput peak raw: ";for(int i=0;i<4;++i)s<<(i+1)<<":"<<(int)outputPeak[i].load()<<(i<3?"  ":"");return s;}
-void G1PluginProcessor::getStateInformation(juce::MemoryBlock& dest){std::lock_guard lock(machineMutex);juce::MemoryOutputStream s(dest,false);s.writeInt(0x47314531);s.writeString(currentRomPath);if(mc){auto&f=mc->getFlash().data();s.writeInt((int)f.size());s.write(f.data(),f.size());}else s.writeInt(0);}
-void G1PluginProcessor::setStateInformation(const void*data,int size){juce::MemoryInputStream s(data,(size_t)size,false);if(s.readInt()!=0x47314531)return;auto path=s.readString();int fs=s.readInt();std::vector<uint8_t>flash;if(fs==(int)g1::Flash::Size&&s.getNumBytesRemaining()>=fs){flash.resize((size_t)fs);s.read(flash.data(),flash.size());}if(path.isEmpty())return;std::vector<uint8_t>b;juce::String e;if(!readAndValidateRom(juce::File(path),b,e)){lastStatus="Saved ROM could not be loaded: "+e;return;}std::lock_guard lock(machineMutex);romBytes=std::move(b);currentRomPath=path;resetMachine(romBytes,flash.empty()?nullptr:&flash);lastStatus="Session state restored.";}
+
+void G1PluginProcessor::getStateInformation(juce::MemoryBlock& dest)
+{
+    std::lock_guard lock(machineMutex);
+    juce::MemoryOutputStream s(dest,false);
+
+    s.writeInt(0x47314531);
+    s.writeString(currentRomPath);
+
+    if(mc)
+    {
+        auto& f=mc->getFlash().data();
+        s.writeInt((int)f.size());
+        s.write(f.data(),f.size());
+    }
+    else
+    {
+        s.writeInt(0);
+    }
+
+    // Appended to the original state format so older saved sessions remain readable.
+    s.writeString(currentPatchPath);
+}
+
+void G1PluginProcessor::setStateInformation(const void* data,int size)
+{
+    juce::MemoryInputStream s(data,(size_t)size,false);
+    if(s.readInt()!=0x47314531)
+        return;
+
+    const auto path=s.readString();
+    const int fs=s.readInt();
+
+    std::vector<uint8_t> flash;
+    if(fs==(int)g1::Flash::Size && s.getNumBytesRemaining()>=fs)
+    {
+        flash.resize((size_t)fs);
+        s.read(flash.data(),flash.size());
+    }
+
+    // Old state blobs end immediately after flash. New ones append the patch path.
+    juce::String savedPatchPath;
+    if(s.getNumBytesRemaining()>0)
+        savedPatchPath=s.readString();
+
+    if(path.isEmpty())
+        return;
+
+    std::vector<uint8_t> b;
+    juce::String e;
+    if(!readAndValidateRom(juce::File(path),b,e))
+    {
+        lastStatus="Saved ROM could not be loaded: "+e;
+        return;
+    }
+
+    // Restore ROM/flash under the machine lock, then release it before loadPatch().
+    // loadPatch() takes machineMutex itself.
+    {
+        std::lock_guard lock(machineMutex);
+        romBytes=std::move(b);
+        currentRomPath=path;
+        currentPatchPath.clear();
+        resetMachine(romBytes,flash.empty()?nullptr:&flash);
+        lastStatus="Session state restored.";
+    }
+
+    if(savedPatchPath.isNotEmpty())
+    {
+        juce::String patchError;
+        if(!loadPatch(juce::File(savedPatchPath),patchError))
+        {
+            currentPatchPath=savedPatchPath;
+            lastStatus="Session restored, but saved patch could not be reloaded: "+patchError;
+        }
+    }
+}
+
 juce::String G1PluginProcessor::romPath()const{return currentRomPath;}juce::String G1PluginProcessor::patchPath()const{return currentPatchPath;}juce::String G1PluginProcessor::status()const{return lastStatus;}juce::AudioProcessorEditor*G1PluginProcessor::createEditor(){return new G1PluginEditor(*this);}juce::AudioProcessor*JUCE_CALLTYPE createPluginFilter(){return new G1PluginProcessor();}
