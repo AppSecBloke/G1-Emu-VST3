@@ -79,11 +79,11 @@ void G1PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
 juce::String G1PluginProcessor::diagnostics()
 {
     std::lock_guard lock(machineMutex); if(!mc) return "ROM required";
-    juce::String s; s << "CPU: " << juce::String((int64)mc->ucCycles()) << " cycles | PIT: " << juce::String((int64)mc->pitIrqs()) << "\n";
-    s << "MIDI -> SCI: " << juce::String((int64)midiMessages.load()) << " msgs / " << juce::String((int64)midiBytes.load()) << " bytes | SCI reads: " << (int)mc->sciDataReads() << "\n";
+    juce::String s; s << "CPU: " << juce::String((juce::int64)mc->ucCycles()) << " cycles | PIT: " << juce::String((juce::int64)mc->pitIrqs()) << "\n";
+    s << "MIDI -> SCI: " << juce::String((juce::int64)midiMessages.load()) << " msgs / " << juce::String((juce::int64)midiBytes.load()) << " bytes | SCI reads: " << (int)mc->sciDataReads() << "\n";
     s << "DSP booted/count: "; for(int i=0;i<4;++i) { auto& d=mc->getDsp((uint32_t)i); s << i << ":" << (d.booted()?"Y":"N") << "/" << (int)d.bootCount(); if(i<3)s << "  "; } s << "\n";
-    s << "DSP IRQD: "; for(int i=0;i<4;++i) { s << i << ":" << juce::String((int64)mc->getDsp((uint32_t)i).irqdCount()); if(i<3)s << "  "; } s << "\n";
-    s << "DSP3 frames: " << juce::String((int64)mc->getDsp(3).audioFrames()) << " | output blocks: " << juce::String((int64)audioBlocks.load()) << "\n";
+    s << "DSP IRQD: "; for(int i=0;i<4;++i) { s << i << ":" << juce::String((juce::int64)mc->getDsp((uint32_t)i).irqdCount()); if(i<3)s << "  "; } s << "\n";
+    s << "DSP3 frames: " << juce::String((juce::int64)mc->getDsp(3).audioFrames()) << " | output blocks: " << juce::String((juce::int64)audioBlocks.load()) << "\n";
     s << "Output peak raw: "; for(int i=0;i<4;++i) { s << (i+1) << ":" << (int)outputPeak[i].load(); if(i<3)s << "  "; }
     return s;
 }
