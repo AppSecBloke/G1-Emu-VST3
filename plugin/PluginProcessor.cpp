@@ -5,6 +5,7 @@
 #include "model/PatchSerializer.h"
 #include "model/PchFileIO.h"
 #include "midi/UploadPacketizer.h"
+#include <BinaryData.h>
 #include <algorithm>
 #include <cmath>
 
@@ -42,8 +43,12 @@ bool G1PluginProcessor::loadPatch(const juce::File& f,juce::String& error){
  if(!f.existsAsFile()){error="Patch file does not exist.";return false;}
  suspendProcessing(true); std::lock_guard lock(machineMutex);
  if(!mc){error="Load the ROM first.";suspendProcessing(false);return false;}
- ModuleDescriptions descs;if(!descs.loadFromFile(juce::File(NME_DATA_DIR).getChildFile("modules.xml"))){error="Could not load NME modules.xml.";suspendProcessing(false);return false;}
- PchFileIO io(descs);auto patch=io.readFile(f);if(!patch){error="NME could not parse this .pch file.";suspendProcessing(false);return false;}
+ ModuleDescriptions descs;
+ const juce::String modulesXml = juce::String::fromUTF8(
+     reinterpret_cast<const char*>(BinaryData::modules_xml),
+     static_cast<int>(BinaryData::modules_xmlSize));
+ if(!descs.loadFromXmlString(modulesXml)){error="Could not load embedded modules.xml.";suspendProcessing(false);return false;}
+ PchFileIO io(descs);auto patch=io.readFile(f);if(!patch){error="Editor code could not parse this .pch file.";suspendProcessing(false);return false;}
  PatchSerializer ser;const auto packets=UploadPacketizer::cut(ser.serializeForUpload(*patch));
  if(mc->ucCycles()<1500*g_ms)runFor(*mc,1500*g_ms-mc->ucCycles());std::vector<uint8_t> drain;mc->getPcPort().takeTx(drain);
  if(transact(*mc,{0xf0,0x33,0x00,0x06,0x00,0x03,0x03,0xf7},1000).empty()){error="G1 OS did not answer the PC-Port handshake.";native.clear();emuTimeCycles=(double)mc->ucCycles();suspendProcessing(false);return false;}
