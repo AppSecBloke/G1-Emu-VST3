@@ -31,6 +31,7 @@ private:
     std::unique_ptr<g1::Microcontroller> mc; std::vector<uint8_t> romBytes; juce::String currentRomPath,currentPatchPath;
     double hostRate=48000.0,emuTimeCycles=0.0; float gain=std::pow(10.0f,36.0f/20.0f);
     std::vector<std::array<float,4>> native; std::mutex machineMutex;
+    std::atomic<bool> panicMuted{false};
     juce::String lastStatus="Select a Nord Modular G1 512 KB ROM to begin.";
     std::atomic<uint64_t> midiMessages{0},midiBytes{0},audioBlocks{0}; std::array<std::atomic<uint32_t>,4> outputPeak{};
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(G1PluginProcessor)
