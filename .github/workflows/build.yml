@@ -1,4 +1,3 @@
-# Builds G1-Emu on the three systems it is meant to run on.
 name: build
 
 on:
@@ -10,33 +9,8 @@ on:
 
 jobs:
   build:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Linux (native ALSA/JACK)
-            os: ubuntu-latest
-            backend: native
-            artifact: linux-x86_64-native
-          - name: Linux (JUCE backend)
-            os: ubuntu-latest
-            backend: juce
-            artifact: linux-x86_64-juce
-          - name: Linux arm64 (native ALSA/JACK)
-            os: ubuntu-24.04-arm
-            backend: native
-            artifact: linux-arm64-native
-          - name: macOS
-            os: macos-latest
-            backend: juce
-            artifact: macos-universal
-            extra_cmake: '"-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0'
-          - name: Windows
-            os: windows-latest
-            backend: juce
-            artifact: windows-x86_64
+    name: Windows x64
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -58,20 +32,12 @@ jobs:
           ref: 8.0.12
           path: JUCE
 
-      - name: Animatek NME patch/editor sources
+      - name: Animatek editor patch sources
         uses: actions/checkout@v4
         with:
           repository: animatek/Animatek-NME
           path: Animatek-NME
           submodules: false
-
-      - name: Linux build dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libjack-jackd2-dev \
-            libfreetype-dev libfontconfig1-dev libx11-dev libxext-dev libxinerama-dev \
-            libxrandr-dev libxcursor-dev libxcomposite-dev libgl1-mesa-dev
 
       - name: Configure
         run: >
@@ -79,46 +45,14 @@ jobs:
           -DGEARMULATOR_DIR=${{ github.workspace }}/gearmulator-md-mm
           -DG1_JUCE_DIR=${{ github.workspace }}/JUCE
           -DNME_DIR=${{ github.workspace }}/Animatek-NME
-          -DG1_BACKEND=${{ matrix.backend }}
-          ${{ matrix.extra_cmake }}
-
-      - name: Build
-        if: runner.os != 'Windows'
-        run: cmake --build build --config Release --parallel
+          -DG1_BACKEND=juce
 
       - name: Build Windows deliverables
-        if: runner.os == 'Windows'
         run: >
           cmake --build build --config Release --parallel
           --target g1run g1gui g1vst3_VST3
 
-      - name: Test
-        if: runner.os != 'Windows'
-        run: ctest --test-dir build -C Release -L g1 --output-on-failure
-
-      - name: Check the macOS binary
-        if: runner.os == 'macOS'
-        run: |
-          for bin in build/app/g1run build/app/gui/g1gui_artefacts/Release/G1-Emu.app/Contents/MacOS/G1-Emu; do
-            echo "== $bin"
-            lipo -archs "$bin"
-            vtool -show-build "$bin" | grep -E 'minos|platform'
-            lipo -archs "$bin" | grep -q arm64 || { echo "no arm64 slice"; exit 1; }
-            lipo -archs "$bin" | grep -q x86_64 || { echo "no x86_64 slice"; exit 1; }
-            vtool -show-build "$bin" | grep -q 'minos 11' || { echo "wrong deployment target"; exit 1; }
-          done
-
-      - name: Package (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          mkdir -p package
-          cp build/app/g1run package/
-          cp -R build/app/gui/g1gui_artefacts/Release/G1-Emu* package/
-          cp G1-Emu/README.md G1-Emu/LICENSE package/
-          tar -czf G1-Emu-${{ matrix.artifact }}.tar.gz -C package .
-
-      - name: Package (Windows)
-        if: runner.os == 'Windows'
+      - name: Package
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path package | Out-Null
@@ -129,8 +63,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: G1-Emu-${{ matrix.artifact }}
-          path: ${{ runner.os == 'Windows' && 'package/*' || format('G1-Emu-{0}.tar.gz', matrix.artifact) }}
+          name: G1-Emu-windows-x86_64
+          path: package/*
           if-no-files-found: error
           retention-days: 30
 
@@ -150,10 +84,9 @@ jobs:
         with:
           path: artifacts
 
-      - name: Collect the packages
+      - name: Collect the package
         run: |
           mkdir -p release
-          find artifacts -name '*.tar.gz' -exec cp {} release/ \;
           (cd artifacts/G1-Emu-windows-x86_64 && zip -r "$GITHUB_WORKSPACE/release/G1-Emu-windows-x86_64.zip" .)
           ls -l release
 

@@ -1,0 +1,18 @@
+diff --git a/plugin/PluginProcessor.cpp b/plugin/PluginProcessor.cpp
+--- a/plugin/PluginProcessor.cpp
++++ b/plugin/PluginProcessor.cpp
+@@
+ bool G1PluginProcessor::loadPatch(const juce::File& f,juce::String& error){
+  if(!f.existsAsFile()){error="Patch file does not exist.";return false;}
+- suspendProcessing(true); std::lock_guard lock(machineMutex);
++ suspendProcessing(true); std::lock_guard lock(machineMutex);
+@@
+  lastStatus="Patch loaded: "+patch->getName()+" (slot 1, PID "+juce::String(pid)+")";error.clear();suspendProcessing(false);return true;
+ }
++void G1PluginProcessor::panic(){std::lock_guard lock(machineMutex);if(!mc){lastStatus="Panic: no G1 is running.";return;}for(int ch=0;ch<16;++ch){const uint8_t s=(uint8_t)(0xb0|ch);mc->getSci().write({s,123,0});mc->getSci().write({s,120,0});}runFor(*mc,20*g_ms);native.clear();emuTimeCycles=(double)mc->ucCycles();lastStatus="PANIC: All Notes Off / All Sound Off sent on all 16 MIDI channels.";}
+ void G1PluginProcessor::advanceTo(uint64_t t){if(mc)while(mc->ucCycles()<t)mc->exec();}
+@@
+-void G1PluginProcessor::getStateInformation(juce::MemoryBlock& dest){std::lock_guard lock(machineMutex);juce::MemoryOutputStream s(dest,false);s.writeInt(0x47314531);s.writeString(currentRomPath);if(mc){auto&f=mc->getFlash().data();s.writeInt((int)f.size());s.write(f.data(),f.size());}else s.writeInt(0);}
+-void G1PluginProcessor::setStateInformation(const void*data,int size){juce::MemoryInputStream s(data,(size_t)size,false);if(s.readInt()!=0x47314531)return;auto path=s.readString();int fs=s.readInt();std::vector<uint8_t>flash;if(fs==(int)g1::Flash::Size&&s.getNumBytesRemaining()>=fs){flash.resize((size_t)fs);s.read(flash.data(),flash.size());}if(path.isEmpty())return;std::vector<uint8_t>b;juce::String e;if(!readAndValidateRom(juce::File(path),b,e)){lastStatus="Saved ROM could not be loaded: "+e;return;}std::lock_guard lock(machineMutex);romBytes=std::move(b);currentRomPath=path;resetMachine(romBytes,flash.empty()?nullptr:&flash);lastStatus="Session state restored.";}
++void G1PluginProcessor::getStateInformation(juce::MemoryBlock& dest){std::lock_guard lock(machineMutex);juce::MemoryOutputStream s(dest,false);s.writeInt(0x47314532);s.writeString(currentRomPath);s.writeString(currentPatchPath);if(mc){auto&f=mc->getFlash().data();s.writeInt((int)f.size());s.write(f.data(),f.size());}else s.writeInt(0);}
++void G1PluginProcessor::setStateInformation(const void*data,int size){juce::MemoryInputStream s(data,(size_t)size,false);const int magic=s.readInt();if(magic!=0x47314531&&magic!=0x47314532)return;auto path=s.readString();juce::String savedPatch;if(magic==0x47314532)savedPatch=s.readString();int fs=s.readInt();std::vector<uint8_t>flash;if(fs==(int)g1::Flash::Size&&s.getNumBytesRemaining()>=fs){flash.resize((size_t)fs);s.read(flash.data(),flash.size());}if(path.isEmpty())return;std::vector<uint8_t>b;juce::String e;if(!readAndValidateRom(juce::File(path),b,e)){lastStatus="Saved ROM could not be loaded: "+e;return;}{std::lock_guard lock(machineMutex);romBytes=std::move(b);currentRomPath=path;currentPatchPath.clear();resetMachine(romBytes,flash.empty()?nullptr:&flash);lastStatus="Session ROM state restored.";}if(savedPatch.isNotEmpty()){juce::String pe;if(!loadPatch(juce::File(savedPatch),pe))lastStatus="Session ROM restored, but saved patch could not be reloaded: "+pe;else lastStatus="Session restored, including patch.";}}

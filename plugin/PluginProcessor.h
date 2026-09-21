@@ -23,7 +23,7 @@ public:
     double getTailLengthSeconds() const override{return 0.0;} int getNumPrograms() override{return 1;} int getCurrentProgram() override{return 0;}
     void setCurrentProgram(int) override{} const juce::String getProgramName(int) override{return{};} void changeProgramName(int,const juce::String&) override{}
     void getStateInformation(juce::MemoryBlock&) override; void setStateInformation(const void*,int) override;
-    bool loadRom(const juce::File&,juce::String&); bool loadPatch(const juce::File&,juce::String&);
+    bool loadRom(const juce::File&,juce::String&); bool loadPatch(const juce::File&,juce::String&); void panic();
     juce::String romPath() const; juce::String patchPath() const; juce::String status() const; juce::String diagnostics();
 private:
     void advanceTo(uint64_t); void resetMachine(const std::vector<uint8_t>&,const std::vector<uint8_t>* =nullptr);
