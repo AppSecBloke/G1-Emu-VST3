@@ -1,0 +1,11 @@
+Roms/
+*.bin
+*.BIN
+*.syx
+*.zip
+build/
+build-*/
+bin/
+
+# Private Patreon drafts
+/Patreon post/
