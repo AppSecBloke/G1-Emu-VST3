@@ -8,6 +8,11 @@ if(NOT EXISTS "${NME_DIR}/source/model/PatchSerializer.cpp")
     message(FATAL_ERROR "G1 VST3 patch loading needs Animatek NME at NME_DIR=${NME_DIR}")
 endif()
 
+# Embed the module catalogue in the plug-in so installed builds do not depend
+# on the editor source tree from the build machine.
+juce_add_binary_data(G1Vst3Data SOURCES
+    ${NME_DIR}/data/modules.xml)
+
 juce_add_plugin(g1vst3
     COMPANY_NAME "Animatek"
     BUNDLE_ID "com.animatek.g1emu"
@@ -36,6 +41,9 @@ target_sources(g1vst3 PRIVATE
 
 target_include_directories(g1vst3 PRIVATE ${CMAKE_SOURCE_DIR} ${NME_DIR}/source)
 target_compile_definitions(g1vst3 PRIVATE
-    NME_DATA_DIR="${NME_DIR}/data"
     JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
-target_link_libraries(g1vst3 PRIVATE g1Lib juce::juce_audio_utils juce::juce_recommended_config_flags juce::juce_recommended_lto_flags)
+target_link_libraries(g1vst3 PRIVATE
+    g1Lib G1Vst3Data
+    juce::juce_audio_utils
+    juce::juce_recommended_config_flags
+    juce::juce_recommended_lto_flags)
