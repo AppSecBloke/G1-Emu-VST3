@@ -25,13 +25,17 @@ public:
     void getStateInformation(juce::MemoryBlock&) override; void setStateInformation(const void*,int) override;
     bool loadRom(const juce::File&,juce::String&); bool loadPatch(const juce::File&,juce::String&); void panic();
     juce::String romPath() const; juce::String patchPath() const; juce::String status() const; juce::String diagnostics();
+    juce::AudioParameterInt* oscCoarseParameter() const{return oscCoarse;}
 private:
     void advanceTo(uint64_t); void resetMachine(const std::vector<uint8_t>&,const std::vector<uint8_t>* =nullptr);
+    void sendLiveParameter(int,int,int,int);
     static bool readAndValidateRom(const juce::File&,std::vector<uint8_t>&,juce::String&);
     std::unique_ptr<g1::Microcontroller> mc; std::vector<uint8_t> romBytes; juce::String currentRomPath,currentPatchPath;
     double hostRate=48000.0,emuTimeCycles=0.0; float gain=std::pow(10.0f,36.0f/20.0f);
     std::vector<std::array<float,4>> native; std::mutex machineMutex;
     std::atomic<bool> panicMuted{false};
+    int currentPatchPid=-1,lastSentOscCoarse=-1;
+    juce::AudioParameterInt* oscCoarse=nullptr;
     juce::String lastStatus="Select a Nord Modular G1 512 KB ROM to begin.";
     std::atomic<uint64_t> midiMessages{0},midiBytes{0},audioBlocks{0}; std::array<std::atomic<uint32_t>,4> outputPeak{};
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(G1PluginProcessor)
