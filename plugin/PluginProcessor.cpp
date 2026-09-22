@@ -12,14 +12,85 @@ namespace{constexpr int32_t dc=0x155;constexpr float scale24=1.0f/8388608.0f;con
 G1PluginProcessor::G1PluginProcessor():AudioProcessor(BusesProperties().withOutput("G1 Outputs",juce::AudioChannelSet::discreteChannels(4),true)){oscCoarse=new juce::AudioParameterInt(juce::ParameterID{"oscCoarse",1},"Osc A Coarse",0,127,64);addParameter(oscCoarse);}G1PluginProcessor::~G1PluginProcessor()=default;
 void G1PluginProcessor::prepareToPlay(double sr,int){hostRate=sr>0?sr:48000.0;}void G1PluginProcessor::releaseResources(){}bool G1PluginProcessor::isBusesLayoutSupported(const BusesLayout&l)const{return l.getMainInputChannelSet().isDisabled()&&l.getMainOutputChannelSet().size()==4;}
 bool G1PluginProcessor::readAndValidateRom(const juce::File&f,std::vector<uint8_t>&out,juce::String&error){if(!f.existsAsFile()){error="ROM file does not exist.";return false;}if(f.getSize()!=g1::g_romSize){error="The G1 ROM must be exactly 512 KB (524288 bytes).";return false;}juce::MemoryBlock b;if(!f.loadFileAsData(b)){error="Could not read the ROM file.";return false;}out.assign((const uint8_t*)b.getData(),(const uint8_t*)b.getData()+b.getSize());auto c=g1::checkRom(out);if(!c.ok()){error="Unsupported G1 ROM: "+juce::String(c.what());return false;}return true;}
-void G1PluginProcessor::resetMachine(const std::vector<uint8_t>&rom,const std::vector<uint8_t>*flash){mc=std::make_unique<g1::Microcontroller>(rom);if(flash&&flash->size()==g1::Flash::Size)mc->getFlash().data()=*flash;else mc->installRomOsInFlash();native.clear();panicMuted.store(false);currentPatchPid=-1;lastSentOscCoarse=-1;midiMessages=0;midiBytes=0;audioBlocks=0;for(auto&p:outputPeak)p=0;mc->getDsp(0).setInputProvider([](int32_t&l,int32_t&r){l=r=0;});mc->getDsp(3).setBlockCallback([this](int32_t a,int32_t b,int32_t c,int32_t d){std::array<int32_t,4>raw{a,b,c,d};for(size_t i=0;i<4;++i){auto v=raw[i]-dc;auto av=(uint32_t)(v<0?-static_cast<int64_t>(v):v);auto old=outputPeak[i].load();while(av>old&&!outputPeak[i].compare_exchange_weak(old,av)){} }++audioBlocks;native.push_back({(a-dc)*scale24*gain,(b-dc)*scale24*gain,(c-dc)*scale24*gain,(d-dc)*scale24*gain});});emuTimeCycles=0.0;}
+void G1PluginProcessor::resetMachine(const std::vector<uint8_t>&rom,const std::vector<uint8_t>*flash){mc=std::make_unique<g1::Microcontroller>(rom);if(flash&&flash->size()==g1::Flash::Size)mc->getFlash().data()=*flash;else mc->installRomOsInFlash();native.clear();panicMuted.store(false);currentPatchPid=-1;lastSentOscCoarse=oscCoarse->get();midiMessages=0;midiBytes=0;audioBlocks=0;for(auto&p:outputPeak)p=0;mc->getDsp(0).setInputProvider([](int32_t&l,int32_t&r){l=r=0;});mc->getDsp(3).setBlockCallback([this](int32_t a,int32_t b,int32_t c,int32_t d){std::array<int32_t,4>raw{a,b,c,d};for(size_t i=0;i<4;++i){auto v=raw[i]-dc;auto av=(uint32_t)(v<0?-static_cast<int64_t>(v):v);auto old=outputPeak[i].load();while(av>old&&!outputPeak[i].compare_exchange_weak(old,av)){} }++audioBlocks;native.push_back({(a-dc)*scale24*gain,(b-dc)*scale24*gain,(c-dc)*scale24*gain,(d-dc)*scale24*gain});});emuTimeCycles=0.0;}
 bool G1PluginProcessor::loadRom(const juce::File&f,juce::String&error){std::vector<uint8_t>b;if(!readAndValidateRom(f,b,error))return false;suspendProcessing(true);{std::lock_guard lock(machineMutex);romBytes=b;currentRomPath=f.getFullPathName();currentPatchPath.clear();resetMachine(romBytes);lastStatus="ROM loaded. G1 is booting inside the plug-in.";}suspendProcessing(false);return true;}
-bool G1PluginProcessor::loadPatch(const juce::File&f,juce::String&error){if(!f.existsAsFile()){error="Patch file does not exist.";return false;}suspendProcessing(true);std::lock_guard lock(machineMutex);if(!mc){error="Load the ROM first.";suspendProcessing(false);return false;}ModuleDescriptions descs;const juce::String modulesXml=juce::String::fromUTF8(reinterpret_cast<const char*>(BinaryData::modules_xml),static_cast<int>(BinaryData::modules_xmlSize));if(!descs.loadFromXmlString(modulesXml)){error="Could not load embedded modules.xml.";suspendProcessing(false);return false;}PchFileIO io(descs);auto patch=io.readFile(f);if(!patch){error="Editor code could not parse this .pch file.";suspendProcessing(false);return false;}PatchSerializer ser;const auto packets=UploadPacketizer::cut(ser.serializeForUpload(*patch));if(mc->ucCycles()<1500*g_ms)runFor(*mc,1500*g_ms-mc->ucCycles());std::vector<uint8_t>drain;mc->getPcPort().takeTx(drain);if(transact(*mc,{0xf0,0x33,0x00,0x06,0x00,0x03,0x03,0xf7},1000).empty()){error="G1 OS did not answer the PC-Port handshake.";native.clear();emuTimeCycles=(double)mc->ucCycles();suspendProcessing(false);return false;}const std::vector<std::vector<uint8_t>>init={{0xf0,0x33,0x5c,0x06,0x41,0x14,0x00,0x00},{0xf0,0x33,0x5c,0x06,0x44,0x02,0x06,0x08,0x04},{0xf0,0x33,0x5c,0x06,0x41,0x35},{0xf0,0x33,0x5c,0x06,0x00,0x20,0x28},{0xf0,0x33,0x5c,0x06,0x00,0x4b,0x01},{0xf0,0x33,0x5c,0x06,0x00,0x4b,0x00},{0xf0,0x33,0x5c,0x06,0x00,0x53,0x01},{0xf0,0x33,0x5c,0x06,0x00,0x53,0x00},{0xf0,0x33,0x5c,0x06,0x00,0x4c,0x01},{0xf0,0x33,0x5c,0x06,0x00,0x4c,0x00},{0xf0,0x33,0x5c,0x06,0x00,0x66},{0xf0,0x33,0x5c,0x06,0x00,0x63},{0xf0,0x33,0x5c,0x06,0x00,0x61},{0xf0,0x33,0x5c,0x06,0x00,0x4e,0x01},{0xf0,0x33,0x5c,0x06,0x00,0x4e,0x00},{0xf0,0x33,0x5c,0x06,0x00,0x68}};for(auto m:init)transact(*mc,checksum(std::move(m)),200);int pid=-1;for(size_t i=0;i<packets.size();++i){auto reply=transact(*mc,UploadPacketizer::frame(packets[i],i==0,i+1==packets.size(),0),500);if(reply.empty()){error="No reply to patch packet "+juce::String((int)i+1)+" of "+juce::String((int)packets.size())+".";native.clear();emuTimeCycles=(double)mc->ucCycles();suspendProcessing(false);return false;}for(size_t k=0;k+6<reply.size();++k)if(reply[k]==0xf0&&reply[k+1]==0x33&&(reply[k+2]>>2)==0x16&&reply[k+5]==0x36)pid=reply[k+6];}if(pid<0){error="The G1 OS did not confirm the uploaded patch.";native.clear();emuTimeCycles=(double)mc->ucCycles();suspendProcessing(false);return false;}runFor(*mc,300*g_ms);native.clear();panicMuted.store(false);emuTimeCycles=(double)mc->ucCycles();currentPatchPath=f.getFullPathName();currentPatchPid=pid;lastSentOscCoarse=-1;lastStatus="Patch loaded: "+patch->getName()+" (slot 1, PID "+juce::String(pid)+")";error.clear();suspendProcessing(false);return true;}
+bool G1PluginProcessor::loadPatch(const juce::File&f,juce::String&error){if(!f.existsAsFile()){error="Patch file does not exist.";return false;}suspendProcessing(true);std::lock_guard lock(machineMutex);if(!mc){error="Load the ROM first.";suspendProcessing(false);return false;}ModuleDescriptions descs;const juce::String modulesXml=juce::String::fromUTF8(reinterpret_cast<const char*>(BinaryData::modules_xml),static_cast<int>(BinaryData::modules_xmlSize));if(!descs.loadFromXmlString(modulesXml)){error="Could not load embedded modules.xml.";suspendProcessing(false);return false;}PchFileIO io(descs);auto patch=io.readFile(f);if(!patch){error="Editor code could not parse this .pch file.";suspendProcessing(false);return false;}PatchSerializer ser;const auto packets=UploadPacketizer::cut(ser.serializeForUpload(*patch));if(mc->ucCycles()<1500*g_ms)runFor(*mc,1500*g_ms-mc->ucCycles());std::vector<uint8_t>drain;mc->getPcPort().takeTx(drain);if(transact(*mc,{0xf0,0x33,0x00,0x06,0x00,0x03,0x03,0xf7},1000).empty()){error="G1 OS did not answer the PC-Port handshake.";native.clear();emuTimeCycles=(double)mc->ucCycles();suspendProcessing(false);return false;}const std::vector<std::vector<uint8_t>>init={{0xf0,0x33,0x5c,0x06,0x41,0x14,0x00,0x00},{0xf0,0x33,0x5c,0x06,0x44,0x02,0x06,0x08,0x04},{0xf0,0x33,0x5c,0x06,0x41,0x35},{0xf0,0x33,0x5c,0x06,0x00,0x20,0x28},{0xf0,0x33,0x5c,0x06,0x00,0x4b,0x01},{0xf0,0x33,0x5c,0x06,0x00,0x4b,0x00},{0xf0,0x33,0x5c,0x06,0x00,0x53,0x01},{0xf0,0x33,0x5c,0x06,0x00,0x53,0x00},{0xf0,0x33,0x5c,0x06,0x00,0x4c,0x01},{0xf0,0x33,0x5c,0x06,0x00,0x4c,0x00},{0xf0,0x33,0x5c,0x06,0x00,0x66},{0xf0,0x33,0x5c,0x06,0x00,0x63},{0xf0,0x33,0x5c,0x06,0x00,0x61},{0xf0,0x33,0x5c,0x06,0x00,0x4e,0x01},{0xf0,0x33,0x5c,0x06,0x00,0x4e,0x00},{0xf0,0x33,0x5c,0x06,0x00,0x68}};for(auto m:init)transact(*mc,checksum(std::move(m)),200);int pid=-1;for(size_t i=0;i<packets.size();++i){auto reply=transact(*mc,UploadPacketizer::frame(packets[i],i==0,i+1==packets.size(),0),500);if(reply.empty()){error="No reply to patch packet "+juce::String((int)i+1)+" of "+juce::String((int)packets.size())+".";native.clear();emuTimeCycles=(double)mc->ucCycles();suspendProcessing(false);return false;}for(size_t k=0;k+6<reply.size();++k)if(reply[k]==0xf0&&reply[k+1]==0x33&&(reply[k+2]>>2)==0x16&&reply[k+5]==0x36)pid=reply[k+6];}if(pid<0){error="The G1 OS did not confirm the uploaded patch.";native.clear();emuTimeCycles=(double)mc->ucCycles();suspendProcessing(false);return false;}runFor(*mc,300*g_ms);native.clear();panicMuted.store(false);emuTimeCycles=(double)mc->ucCycles();currentPatchPath=f.getFullPathName();currentPatchPid=pid;
+// Establish a host-value baseline without overwriting the newly loaded patch.
+lastSentOscCoarse=oscCoarse->get();lastStatus="Patch loaded: "+patch->getName()+" (slot 1, PID "+juce::String(pid)+")";error.clear();suspendProcessing(false);return true;}
 void G1PluginProcessor::sendLiveParameter(int section,int module,int parameter,int value){if(!mc||currentPatchPid<0)return;std::vector<uint8_t>m{0xf0,0x33,0x4c,0x06,(uint8_t)(currentPatchPid&0x7f),0x40,(uint8_t)(section&0x7f),(uint8_t)(module&0x7f),(uint8_t)(parameter&0x7f),(uint8_t)(value&0x7f)};mc->getPcPort().receive(checksum(std::move(m)));}
 void G1PluginProcessor::panic(){suspendProcessing(true);{std::lock_guard lock(machineMutex);if(mc){for(int ch=0;ch<16;++ch){const uint8_t st=(uint8_t)(0xB0|ch);mc->getSci().write(std::vector<uint8_t>{st,123,0});mc->getSci().write(std::vector<uint8_t>{st,120,0});}runFor(*mc,20*g_ms);native.clear();panicMuted.store(true);emuTimeCycles=(double)mc->ucCycles();lastStatus="Panic: all notes off and output muted.";}}suspendProcessing(false);}
 void G1PluginProcessor::advanceTo(uint64_t t){if(mc)while(mc->ucCycles()<t)mc->exec();}
 void G1PluginProcessor::processBlock(juce::AudioBuffer<float>&buffer,juce::MidiBuffer&midi){juce::ScopedNoDenormals nd;buffer.clear();std::lock_guard lock(machineMutex);if(!mc)return;native.clear();if(currentPatchPid>=0&&oscCoarse){int v=oscCoarse->get();if(v!=lastSentOscCoarse){sendLiveParameter(1,1,0,v);lastSentOscCoarse=v;}}int n=buffer.getNumSamples(),cursor=0;for(const auto meta:midi){int pos=juce::jlimit(0,n,meta.samplePosition);emuTimeCycles+=(pos-cursor)*(double)g1::g_ucClock/hostRate;advanceTo((uint64_t)std::llround(emuTimeCycles));const auto msg=meta.getMessage();if(msg.isNoteOn())panicMuted.store(false);auto*p=msg.getRawData();int sz=msg.getRawDataSize();if(p&&sz>0){mc->getSci().write(std::vector<uint8_t>(p,p+sz));++midiMessages;midiBytes.fetch_add((uint64_t)sz);}cursor=pos;}emuTimeCycles+=(n-cursor)*(double)g1::g_ucClock/hostRate;advanceTo((uint64_t)std::llround(emuTimeCycles));midi.clear();if(panicMuted.load()){buffer.clear();return;}if(native.empty())return;for(int i=0;i<n;++i){double x=n>1?(double)i*(native.size()-1)/(n-1):0;size_t a=(size_t)x,b=std::min(a+1,native.size()-1);float t=(float)(x-a);for(int ch=0;ch<std::min(4,buffer.getNumChannels());++ch)buffer.setSample(ch,i,native[a][ch]+(native[b][ch]-native[a][ch])*t);}}
 juce::String G1PluginProcessor::diagnostics(){std::lock_guard lock(machineMutex);if(!mc)return"ROM required";juce::String s;s<<"CPU: "<<juce::String((juce::int64)mc->ucCycles())<<" cycles | PIT: "<<juce::String((juce::int64)mc->pitIrqs())<<"\n";s<<"MIDI -> SCI: "<<juce::String((juce::int64)midiMessages.load())<<" msgs / "<<juce::String((juce::int64)midiBytes.load())<<" bytes | SCI reads: "<<(int)mc->sciDataReads()<<"\n";s<<"DSP booted/count: ";for(int i=0;i<4;++i){auto&d=mc->getDsp((uint32_t)i);s<<i<<":"<<(d.booted()?"Y":"N")<<"/"<<(int)d.bootCount()<<(i<3?"  ":"");}s<<"\nDSP IRQD: ";for(int i=0;i<4;++i)s<<i<<":"<<juce::String((juce::int64)mc->getDsp((uint32_t)i).irqdCount())<<(i<3?"  ":"");s<<"\nDSP3 frames: "<<juce::String((juce::int64)mc->getDsp(3).audioFrames())<<" | output blocks: "<<juce::String((juce::int64)audioBlocks.load())<<"\nOutput peak raw: ";for(int i=0;i<4;++i)s<<(i+1)<<":"<<(int)outputPeak[i].load()<<(i<3?"  ":"");s<<"\nOsc A coarse: "<<(oscCoarse?oscCoarse->get():-1)<<" | PID: "<<currentPatchPid;return s;}
-void G1PluginProcessor::getStateInformation(juce::MemoryBlock&dest){std::lock_guard lock(machineMutex);juce::MemoryOutputStream s(dest,false);s.writeInt(0x47314531);s.writeString(currentRomPath);if(mc){auto&f=mc->getFlash().data();s.writeInt((int)f.size());s.write(f.data(),f.size());}else s.writeInt(0);s.writeString(currentPatchPath);}
-void G1PluginProcessor::setStateInformation(const void*data,int size){juce::MemoryInputStream s(data,(size_t)size,false);if(s.readInt()!=0x47314531)return;const auto path=s.readString();const int fs=s.readInt();std::vector<uint8_t>flash;if(fs==(int)g1::Flash::Size&&s.getNumBytesRemaining()>=fs){flash.resize((size_t)fs);s.read(flash.data(),flash.size());}juce::String savedPatchPath;if(s.getNumBytesRemaining()>0)savedPatchPath=s.readString();if(path.isEmpty())return;std::vector<uint8_t>b;juce::String e;if(!readAndValidateRom(juce::File(path),b,e)){lastStatus="Saved ROM could not be loaded: "+e;return;}{std::lock_guard lock(machineMutex);romBytes=std::move(b);currentRomPath=path;currentPatchPath.clear();resetMachine(romBytes,flash.empty()?nullptr:&flash);lastStatus="Session state restored.";}if(savedPatchPath.isNotEmpty()){juce::String patchError;if(!loadPatch(juce::File(savedPatchPath),patchError)){currentPatchPath=savedPatchPath;lastStatus="Session restored, but saved patch could not be reloaded: "+patchError;}}}
+void G1PluginProcessor::getStateInformation(juce::MemoryBlock& dest)
+{
+    std::lock_guard lock(machineMutex);
+    juce::MemoryOutputStream s(dest, false);
+    s.writeInt(0x47314531);
+    s.writeString(currentRomPath);
+    if (mc)
+    {
+        auto& flash = mc->getFlash().data();
+        s.writeInt((int)flash.size());
+        s.write(flash.data(), flash.size());
+    }
+    else
+        s.writeInt(0);
+    s.writeString(currentPatchPath);
+    // Append to the existing layout so older ROM/flash/patch states remain readable.
+    s.writeInt(oscCoarse->get());
+}
+
+void G1PluginProcessor::setStateInformation(const void* data, int size)
+{
+    juce::MemoryInputStream s(data, (size_t)size, false);
+    if (s.readInt() != 0x47314531)
+        return;
+    const auto path = s.readString();
+    const int fs = s.readInt();
+    std::vector<uint8_t> flash;
+    if (fs == (int)g1::Flash::Size && s.getNumBytesRemaining() >= fs)
+    {
+        flash.resize((size_t)fs);
+        s.read(flash.data(), flash.size());
+    }
+    juce::String savedPatchPath;
+    if (s.getNumBytesRemaining() > 0)
+        savedPatchPath = s.readString();
+    // Older states end after the flash or patch path. Use the parameter default.
+    const int savedCoarse = s.getNumBytesRemaining() >= 4
+        ? juce::jlimit(0, 127, s.readInt()) : 64;
+    {
+        std::lock_guard lock(machineMutex);
+        oscCoarse->setValueNotifyingHost(oscCoarse->convertTo0to1((float)savedCoarse));
+        // Restore the host/UI value without issuing a PC-Port parameter edit.
+        lastSentOscCoarse = oscCoarse->get();
+    }
+    if (path.isEmpty())
+        return;
+    std::vector<uint8_t> bytes;
+    juce::String error;
+    if (!readAndValidateRom(juce::File(path), bytes, error))
+    {
+        lastStatus = "Saved ROM could not be loaded: " + error;
+        return;
+    }
+    {
+        std::lock_guard lock(machineMutex);
+        romBytes = std::move(bytes);
+        currentRomPath = path;
+        currentPatchPath.clear();
+        resetMachine(romBytes, flash.empty() ? nullptr : &flash);
+        lastStatus = "Session state restored.";
+    }
+    if (savedPatchPath.isNotEmpty())
+    {
+        juce::String patchError;
+        if (!loadPatch(juce::File(savedPatchPath), patchError))
+        {
+            currentPatchPath = savedPatchPath;
+            lastStatus = "Session restored, but saved patch could not be reloaded: " + patchError;
+        }
+    }
+}
 juce::String G1PluginProcessor::romPath()const{return currentRomPath;}juce::String G1PluginProcessor::patchPath()const{return currentPatchPath;}juce::String G1PluginProcessor::status()const{return lastStatus;}juce::AudioProcessorEditor*G1PluginProcessor::createEditor(){return new G1PluginEditor(*this);}juce::AudioProcessor*JUCE_CALLTYPE createPluginFilter(){return new G1PluginProcessor();}

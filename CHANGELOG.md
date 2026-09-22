@@ -5,6 +5,20 @@ its line here, in the same commit** (see `CLAUDE.md`). Each entry says who made 
 and how it was checked; the commit is the one that brings the entry (`git log -- CHANGELOG.md`).
 Older entries cite their commit by hand.
 
+## 2026-09-22
+
+- **VST3 playability build #6 (Codex; local change, not committed).** Updated the visible
+  build title and added an integer 0-127 Osc A Coarse rotary control using JUCE's
+  SliderParameterAttachment, with the existing diagnostics retained below it. Patch loading
+  now baselines the current host parameter instead of sending its default on the first audio
+  block. Plugin state appends the coarse value while still accepting older ROM/flash/patch
+  states; restoration updates the host/UI value without sending a PC-Port edit. The fixed
+  section/module/parameter mapping and PC-Port message format are unchanged. Verification:
+  source diff reviewed and git diff --check passed; local Release configuration was attempted
+  but could not start because cmake was not found. Visual Studio and the required dependency
+  checkouts were not found in the inspected installation/default locations. No compiled VST3
+  or runtime/audio verification yet.
+
 ## 2026-09-21
 
 - **`v0.1.0-alpha.3` published with the fixes proven on the first real Mac run (Codex, asked for
