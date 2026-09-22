@@ -5,6 +5,34 @@ its line here, in the same commit** (see `CLAUDE.md`). Each entry says who made 
 and how it was checked; the commit is the one that brings the entry (`git log -- CHANGELOG.md`).
 Older entries cite their commit by hand.
 
+## 2026-09-23
+
+- **Build #7 concurrency review fix (Codex; local change, not committed).** Found that
+  overlapping host state restoration and UI load operations could each restore a different
+  saved suspension flag, leaving audio permanently suspended. Replaced independent pause
+  guards with a shared nesting count protected by JUCE's callback lock, and routed panic
+  through the same guard. The guard releases the callback lock before taking machineMutex
+  and restores suspension only after the last operation exits. Verification: checked JUCE
+  8.0.12 suspension/lock APIs, reviewed lock ordering and descriptor ownership, and compared
+  ROM validation, emulator/DSP setup, MIDI/audio processing and PC-Port bytes with Build #6.
+  No local compilation or runtime concurrency test; CI compilation remains required.
+
+- **VST3 playability build #7 (Codex; local change, not committed).** Retained the NME
+  module catalogue and parsed patch in the processor and replaced the coarse-only editor
+  with module-grouped, metadata-driven ordinary parameter controls. Live edits validate
+  their patch generation and address, clamp values, update the retained model and coalesce
+  for paced delivery from processBlock; the proven PC-Port sender is unchanged. The existing
+  oscCoarse host input resolves a unique OscA coarse parameter by metadata; no new host
+  parameters were added. Initialization and editor recreation do not send edits. Added
+  discovery/transmission diagnostics and a versioned state overlay tied to SHA-256 hashes
+  of the source patch and module catalogue, retaining legacy ROM/flash/patch/coarse state
+  reading. Source patches are never written. Added JUCE cryptography linkage and a Build #7
+  review/test guide. Verification: reviewed the source/diff, git diff --check passed, checked
+  the sender against HEAD and confirmed the sole host parameter; cross-checked SimpleOSC
+  against NME metadata (13 ordinary parameters: nine rotaries, two toggles, two selectors).
+  These are static checks, not compiled/runtime tests. No local build attempted because this
+  machine has no CMake/MSVC toolchain; CI compilation and DAW/audio acceptance remain pending.
+
 ## 2026-09-22
 
 - **VST3 playability build #6 (Codex; local change, not committed).** Updated the visible

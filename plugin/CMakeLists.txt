@@ -45,5 +45,6 @@ target_compile_definitions(g1vst3 PRIVATE
 target_link_libraries(g1vst3 PRIVATE
     g1Lib G1Vst3Data
     juce::juce_audio_utils
+    juce::juce_cryptography
     juce::juce_recommended_config_flags
     juce::juce_recommended_lto_flags)
