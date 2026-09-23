@@ -7,6 +7,17 @@ Older entries cite their commit by hand.
 
 ## 2026-09-23
 
+- **Wobble voice performance patch (Codex; local change, not committed).** Added
+  `WobbleVoice.pch` alongside the preserved `SubtractiveVoice.pch`, connecting
+  Keyboard velocity-on to ADSR amp and setting audible ADSR and LFO-to-FilterD
+  modulation values. Included the fixture in the Windows build artifact for
+  direct loading in Cubase. Verification: the CMPM-corrected ROM-backed
+  `g1patchtest` uploaded the patch and produced 261.5 Hz stereo audio; output
+  RMS varied strongly with LFO depth 40 but stayed nearly steady at depth 0,
+  and a longer ADSR attack reduced the first 100 ms RMS. Note-off, velocity
+  sensitivity and overlapping envelopes still require DAW testing because the
+  current harness captures a single held note.
+
 - **Subtractive voice test patch (Codex; local change, not committed).** Added a six-module
   `.pch` fixture using the existing Keyboard, OscA, FilterD, ADSR, LFOA and 2Output
   definitions. OscA feeds FilterD's resonant low-pass output through ADSR's audio path
