@@ -7,6 +7,17 @@ Older entries cite their commit by hand.
 
 ## 2026-09-23
 
+- **Subtractive voice test patch (Codex; local change, not committed).** Added a six-module
+  `.pch` fixture using the existing Keyboard, OscA, FilterD, ADSR, LFOA and 2Output
+  definitions. OscA feeds FilterD's resonant low-pass output through ADSR's audio path
+  to stereo output; Keyboard gate triggers ADSR and LFOA drives FilterD frequency mod.
+  Verification: NME catalogue indices, parameter counts/ranges and cable signal types
+  checked; the CMPM-corrected `g1patchtest` uploaded it with the rack ROM and produced
+  audio on outputs 1/2 with DSP links active. Uncabling gate made it silent; removing
+  LFO depth, changing filter cutoff/resonance, slowing attack and playing note 72 gave
+  distinct, expected measurements. VST editor rendering and live edits on this patch
+  remain to be checked in a DAW.
+
 - **CMPM diagnostic artifact identification (Codex; local change, not committed).**
   The manual diagnostic workflow now verifies the configured CMPM source overlay before
   building g1patchtest, records the overlay and executable SHA-256 hashes plus a unique
