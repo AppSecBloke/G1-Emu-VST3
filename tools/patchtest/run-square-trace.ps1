@@ -23,7 +23,8 @@ if (($info.buildId -notlike 'CMPM-build8-squareblocktrace-*' -and
      $info.buildId -notlike 'CMPM-build8-squarehost-*' -and
      $info.buildId -notlike 'CMPM-build8-squareirqboundary-*' -and
      $info.buildId -notlike 'CMPM-build8-squaredmawait-*' -and
-     $info.buildId -notlike 'CMPM-build8-squareinternaldma-*') -or
+     $info.buildId -notlike 'CMPM-build8-squareinternaldma-*' -and
+     $info.buildId -notlike 'CMPM-build8-squareessiproducer-*') -or
     $info.executableSha256 -ne (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash) {
     throw 'This bundle is not the matching CMPM-corrected Square trace executable.'
 }

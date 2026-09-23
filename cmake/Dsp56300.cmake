@@ -117,7 +117,7 @@ g1_dsp_replace(dma.cpp
 	"		assert(false && \"DMA transfer mode not supported yet\");\n		return true;\n	}"
 	"		if(agmS == AddressGenMode::SingleCounterAnoUpdate && agmD == AddressGenMode::SingleCounterAnoUpdate)\n		{\n			memWrite(areaD, m_ddr, memRead(areaS, m_dsr));\n			if(isRequestTrigger() && m_dco)\n			{\n				--m_dco;\n				return false;\n			}\n			m_dco = m_dcomInit;\n			return true;\n		}\n\n		assert(false && \"DMA transfer mode not supported yet\");\n		return true;\n	}")
 
-# Observe DMA3's ESSI1 request and vector-$1E injection only in diagnostic builds.
+# Observe ESSI clock catch-up, DMA3 requests and vector-$1E injection only in diagnostic builds.
 if(G1_DSP_TRACE)
 	g1_dsp_replace(dma.cpp
 		"#include \"interrupts.h\""
@@ -128,6 +128,24 @@ if(G1_DSP_TRACE)
 	g1_dsp_replace(dma.cpp
 		"\t\tif(bitvalue(m_dcr, Die))\n\t\t\tm_peripherals.getDSP().injectInterrupt(Vba_DMAchannel0 + (m_index<<1));"
 		"\t\tif(bitvalue(m_dcr, Die))\n\t\t{\n\t\t\tg1TraceDma3(\"enqueue_pre\", m_peripherals, m_index, m_dcr, m_dsr, m_ddr, m_dco, m_dma.getDSTR());\n\t\t\tconst auto injected = m_peripherals.getDSP().injectInterrupt(Vba_DMAchannel0 + (m_index<<1));\n\t\t\tg1TraceDma3(\"enqueue_post\", m_peripherals, m_index, m_dcr, m_dsr, m_ddr, m_dco, m_dma.getDSTR(), injected ? 1 : 0);\n\t\t}")
+	g1_dsp_replace(esaiclock.cpp
+		"#include \"peripherals.h\""
+		"#include \"peripherals.h\"\n#include \"g1_essi_trace.h\"")
+	g1_dsp_replace(esaiclock.cpp
+		"const auto diff = *m_dspInstructionCounter - m_lastClock;"
+		"const auto diff = *m_dspInstructionCounter - m_lastClock;\n\tg1TraceEssiClock(\"clock_enter\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, 0, -1, -1, -1);")
+	g1_dsp_replace(esaiclock.cpp
+		"m_lastClock += m_cyclesPerSample;"
+		"m_lastClock += m_cyclesPerSample;\n\tg1TraceEssiClock(\"clock_advance\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, 0, -1, -1, -1);")
+	g1_dsp_replace(esaiclock.cpp
+		"if(e.esai->hasEnabledReceivers() && advanceClock(e.rx))"
+		"g1TraceEssiClock(\"rx_pre\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, reinterpret_cast<uintptr_t>(e.esai), e.rx.counter, e.rx.divider, rxCount);\n\t\tif(e.esai->hasEnabledReceivers() && advanceClock(e.rx))")
+	g1_dsp_replace(esaiclock.cpp
+		"processRx[rxCount++] = e.esai;"
+		"processRx[rxCount++] = e.esai;\n\t\tg1TraceEssiClock(\"rx_post\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, reinterpret_cast<uintptr_t>(e.esai), e.rx.counter, e.rx.divider, rxCount);")
+	g1_dsp_replace(esaiclock.cpp
+		"for(size_t i=0; i<rxCount; ++i) processRx[i]->execRX();"
+		"g1TraceEssiClock(\"rx_dispatch\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, 0, -1, -1, rxCount);\n\tfor(size_t i=0; i<rxCount; ++i) processRx[i]->execRX();")
 endif()
 
 foreach(source IN LISTS g1_dsp_files)
@@ -149,6 +167,12 @@ set_property(TARGET dsp56kEmu PROPERTY SOURCES "${g1_dsp_build_sources}")
 list(FIND g1_dsp_build_sources "${g1_dsp_overlay}/jitops_alu.cpp" g1_cmpm_source_index)
 if(g1_cmpm_source_index EQUAL -1)
 	message(FATAL_ERROR "CMPM correction is not in the dsp56kEmu source list")
+endif()
+if(G1_DSP_TRACE)
+	list(FIND g1_dsp_build_sources "${g1_dsp_overlay}/esaiclock.cpp" g1_essi_trace_source_index)
+	if(g1_essi_trace_source_index EQUAL -1)
+		message(FATAL_ERROR "ESSI diagnostic overlay is not in the dsp56kEmu source list")
+	endif()
 endif()
 message(STATUS "G1 DSP CMPM correction: ${g1_dsp_overlay}/jitops_alu.cpp")
 target_include_directories(dsp56kEmu BEFORE PUBLIC "${CMAKE_BINARY_DIR}/g1-dsp")

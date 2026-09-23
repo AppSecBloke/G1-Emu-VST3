@@ -7,6 +7,13 @@ Older entries cite their commit by hand.
 
 ## 2026-09-24
 
+- **ESSI1 producer diagnostic (Codex; local change, not committed).**
+  Extended the opt-in diagnostic overlay with bounded ESSI clock catch-up and
+  receive-slot logging, correlated by DSP identity with the DMA3 interrupt
+  trace for Square-32 and Square-1. No peripheral or execution behaviour was
+  changed. Verification: static diff and PowerShell syntax checks; CI build
+  and ROM-backed A/B capture remain pending.
+
 - **Internal DSP0 DMA3 interrupt diagnostic (Codex; local change, not committed).**
   Added an opt-in, cycle-bounded trace in the diagnostic dsp56300 build copy at
   DMA3 ESSI1 request handling and vector `$1E` injection, and a matched

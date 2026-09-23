@@ -63,6 +63,10 @@ jobs:
           foreach ($marker in @('g1_dma_trace.h', '"request_enter"', '"enqueue_pre"', '"enqueue_post"')) {
             if (-not $dma.Contains($marker)) { throw "The DMA3 diagnostic overlay is missing $marker" }
           }
+          $essiClock = Get-Content diagnostic-build/g1-dsp/dsp56kEmu/esaiclock.cpp -Raw
+          foreach ($marker in @('g1_essi_trace.h', '"clock_enter"', '"clock_advance"', '"rx_pre"', '"rx_post"', '"rx_dispatch"')) {
+            if (-not $essiClock.Contains($marker)) { throw "The ESSI producer overlay is missing $marker" }
+          }
 
       - name: Build tools only
         run: cmake --build diagnostic-build --config Release --parallel --target g1patchtest dspdis g1dspcheck
@@ -85,17 +89,18 @@ jobs:
           Copy-Item G1-Emu/docs/patch-diagnostics.md diagnostic-bundle/README.md
           Copy-Item G1-Emu/LICENSE diagnostic-bundle/
           $info = [ordered]@{
-            buildId = "CMPM-build8-squareinternaldma-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+            buildId = "CMPM-build8-squareessiproducer-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
             g1 = (git -C G1-Emu rev-parse HEAD)
             gearmulator = (git -C gearmulator-md-mm rev-parse HEAD)
             dsp56300 = (git -C gearmulator-md-mm/source/dsp56300 rev-parse HEAD)
             dspOverlayCmpmSha256 = (Get-FileHash diagnostic-build/g1-dsp/dsp56kEmu/jitops_alu.cpp -Algorithm SHA256).Hash
             dspOverlayDmaSha256 = (Get-FileHash diagnostic-build/g1-dsp/dsp56kEmu/dma.cpp -Algorithm SHA256).Hash
+            dspOverlayEssiClockSha256 = (Get-FileHash diagnostic-build/g1-dsp/dsp56kEmu/esaiclock.cpp -Algorithm SHA256).Hash
             mc68k = (git -C gearmulator-md-mm/source/mc68k rev-parse HEAD)
             juce = (git -C JUCE rev-parse HEAD)
             nme = (git -C Animatek-NME rev-parse HEAD)
             submodules = @(git -C gearmulator-md-mm submodule status --recursive)
-            configuration = 'Release, x64, static MSVC runtime, CMPM overlay and opt-in internal DSP0 DMA3 request/interrupt trace (32 failing, 1 reference)'
+            configuration = 'Release, x64, static MSVC runtime, CMPM overlay and opt-in ESSI1 producer/DMA3 trace (32 failing, 1 reference)'
             runnerImage = $env:ImageVersion
             runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
             executableSha256 = (Get-FileHash diagnostic-bundle/g1patchtest.exe -Algorithm SHA256).Hash
@@ -125,7 +130,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: G1-patch-diagnostics-CMPM-build8-squareinternaldma-${{ github.run_id }}-${{ github.run_attempt }}
+          name: G1-patch-diagnostics-CMPM-build8-squareessiproducer-${{ github.run_id }}-${{ github.run_attempt }}
           path: diagnostic-bundle/
           if-no-files-found: error
           retention-days: 14

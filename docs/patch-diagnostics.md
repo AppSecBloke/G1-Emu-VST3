@@ -186,6 +186,15 @@ Correlate them with `dsp0-settle.csv.host-blocks.csv` and `.host-waits.csv`.
 The runner still requires Saw-32 audio, Square-32 silence and Square-1 audio;
 it fails rather than relaxing those checks if the trace changes behaviour.
 
+The `squareessiproducer` build retains the DMA3 trace and adds
+`dsp0-essi1-producer.csv` in each Square case. This records every bounded ESSI
+clock callback, its instruction/cycle counter, last clock tick, period, clock
+lag, receive slot counter/divider before and after selection, number of receive
+dispatches, and ESSI1 status. Match the `dsp` column with the DMA3 CSV, then
+group by `clock_count` and `rx_dispatch` to see how many receive intervals were
+processed during the PC `$16E` burst. Use the same `-SettleTrace -FocusMs 25`
+command and audio acceptance checks. No timing or execution policy is changed.
+
 ## Overlapping-note capture
 
 The same bundle can capture two overlapping notes through the G1 MIDI IN path. Run this

@@ -23,14 +23,16 @@ if (($info.buildId -notlike 'CMPM-build8-squarestartup-*' -and
      $info.buildId -notlike 'CMPM-build8-squarehost-*' -and
      $info.buildId -notlike 'CMPM-build8-squareirqboundary-*' -and
      $info.buildId -notlike 'CMPM-build8-squaredmawait-*' -and
-     $info.buildId -notlike 'CMPM-build8-squareinternaldma-*') -or
+     $info.buildId -notlike 'CMPM-build8-squareinternaldma-*' -and
+     $info.buildId -notlike 'CMPM-build8-squareessiproducer-*') -or
     $info.executableSha256 -ne (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash) {
     throw 'This bundle is not the matching CMPM-corrected Square startup executable.'
 }
 if ($SettleTrace -and $info.buildId -notlike 'CMPM-build8-squarehost-*' -and
     $info.buildId -notlike 'CMPM-build8-squareirqboundary-*' -and
     $info.buildId -notlike 'CMPM-build8-squaredmawait-*' -and
-    $info.buildId -notlike 'CMPM-build8-squareinternaldma-*') {
+    $info.buildId -notlike 'CMPM-build8-squareinternaldma-*' -and
+    $info.buildId -notlike 'CMPM-build8-squareessiproducer-*') {
     throw 'The host-port event trace requires a squarehost, squareirqboundary or squaredmawait diagnostic build.'
 }
 if ((Get-Item -LiteralPath $RomPath).Length -ne 524288) {
@@ -56,7 +58,8 @@ $names = @('G1_MIDINOTE', 'G1_DSP_STARTUP_WATCH_FILE', 'G1_DSP_SETTLE_FILE',
            'G1_DSP_TRACE', 'G1_DSP_TRACE_FILE', 'G1_DSP_TRACE_START',
            'G1_DSP_TRACE_STEPS', 'G1_DUMP', 'G1_INTERP', 'G1_NO_LA_FIX',
            'G1_KNOBS', 'G1_PREPRESS', 'G1_PRESS', 'G1_HOLD', 'G1_HOLD_END', 'G1_DIAL',
-           'G1_DSP_DMA_TRACE_FILE', 'G1_DSP_DMA_TRACE_BEGIN', 'G1_DSP_DMA_TRACE_END')
+           'G1_DSP_DMA_TRACE_FILE', 'G1_DSP_DMA_TRACE_BEGIN', 'G1_DSP_DMA_TRACE_END',
+           'G1_DSP_ESSI_TRACE_FILE')
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 $allCheckpoints = @()
@@ -80,9 +83,13 @@ try {
             $env:G1_DSP_SETTLE_FILE = Join-Path $caseDir 'dsp0-settle.csv'
             $env:G1_DSP_SETTLE_FOCUS_MS = [string]$FocusMs
         }
-        Remove-Item -LiteralPath Env:G1_DSP_DMA_TRACE_FILE, Env:G1_DSP_DMA_TRACE_BEGIN, Env:G1_DSP_DMA_TRACE_END -ErrorAction SilentlyContinue
-        if ($SettleTrace -and $info.buildId -like 'CMPM-build8-squareinternaldma-*' -and $FocusMs -eq 25) {
+        Remove-Item -LiteralPath Env:G1_DSP_DMA_TRACE_FILE, Env:G1_DSP_DMA_TRACE_BEGIN, Env:G1_DSP_DMA_TRACE_END, Env:G1_DSP_ESSI_TRACE_FILE -ErrorAction SilentlyContinue
+        if ($SettleTrace -and ($info.buildId -like 'CMPM-build8-squareinternaldma-*' -or
+            $info.buildId -like 'CMPM-build8-squareessiproducer-*') -and $FocusMs -eq 25) {
             $env:G1_DSP_DMA_TRACE_FILE = Join-Path $caseDir 'dsp0-dma3-internal.csv'
+            if ($info.buildId -like 'CMPM-build8-squareessiproducer-*') {
+                $env:G1_DSP_ESSI_TRACE_FILE = Join-Path $caseDir 'dsp0-essi1-producer.csv'
+            }
             if ($case.BlockSize -eq 32 -and $case.Name -eq 'Square-32') {
                 $env:G1_DSP_DMA_TRACE_BEGIN = '214241712'
                 $env:G1_DSP_DMA_TRACE_END = '214241766'
@@ -90,7 +97,7 @@ try {
                 $env:G1_DSP_DMA_TRACE_BEGIN = '214239700'
                 $env:G1_DSP_DMA_TRACE_END = '214239930'
             } else {
-                Remove-Item -LiteralPath Env:G1_DSP_DMA_TRACE_FILE -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath Env:G1_DSP_DMA_TRACE_FILE, Env:G1_DSP_ESSI_TRACE_FILE -ErrorAction SilentlyContinue
             }
         }
         $env:G1_DUMP = $dumpDir
@@ -116,11 +123,18 @@ try {
         if ($SettleTrace -and ((Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + '.blocks.csv')).Length -lt 1000)) {
             throw "$($case.Name) did not record focused DSP0 blocks."
         }
-        if ($SettleTrace -and $info.buildId -like 'CMPM-build8-squareinternaldma-*' -and
+        if ($SettleTrace -and ($info.buildId -like 'CMPM-build8-squareinternaldma-*' -or
+            $info.buildId -like 'CMPM-build8-squareessiproducer-*') -and
             $FocusMs -eq 25 -and $case.Name -ne 'Saw-32' -and
             (-not (Test-Path -LiteralPath $env:G1_DSP_DMA_TRACE_FILE -PathType Leaf) -or
              (Get-Item -LiteralPath $env:G1_DSP_DMA_TRACE_FILE).Length -lt 100)) {
             throw "$($case.Name) did not record the internal DMA3 request/injection window."
+        }
+        if ($SettleTrace -and $info.buildId -like 'CMPM-build8-squareessiproducer-*' -and
+            $FocusMs -eq 25 -and $case.Name -ne 'Saw-32' -and
+            (-not (Test-Path -LiteralPath $env:G1_DSP_ESSI_TRACE_FILE -PathType Leaf) -or
+             (Get-Item -LiteralPath $env:G1_DSP_ESSI_TRACE_FILE).Length -lt 100)) {
+            throw "$($case.Name) did not record the ESSI1 clock producer window."
         }
         if ($SettleTrace) {
             foreach ($suffix in @('.events.csv', '.cpu-host.csv')) {
@@ -130,12 +144,14 @@ try {
             }
             if ($FocusMs -eq 25 -and ($info.buildId -like 'CMPM-build8-squareirqboundary-*' -or
                 $info.buildId -like 'CMPM-build8-squaredmawait-*' -or
-                $info.buildId -like 'CMPM-build8-squareinternaldma-*') -and
+                $info.buildId -like 'CMPM-build8-squareinternaldma-*' -or
+                $info.buildId -like 'CMPM-build8-squareessiproducer-*') -and
                 (Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + '.host-blocks.csv')).Length -lt 1000) {
                 throw "$($case.Name) did not record word-195 interrupt boundaries."
             }
             if ($FocusMs -eq 25 -and ($info.buildId -like 'CMPM-build8-squaredmawait-*' -or
-                $info.buildId -like 'CMPM-build8-squareinternaldma-*') -and
+                $info.buildId -like 'CMPM-build8-squareinternaldma-*' -or
+                $info.buildId -like 'CMPM-build8-squareessiproducer-*') -and
                 (Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + '.host-waits.csv')).Length -lt 1000) {
                 throw "$($case.Name) did not record the word-195 host-command waits."
             }

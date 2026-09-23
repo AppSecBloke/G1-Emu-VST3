@@ -3,6 +3,7 @@
 // Included only by the diagnostic dsp56300 build overlay. Observe DMA3's
 // ESSI1 receive path without reading peripheral data or changing execution.
 #include <cstdlib>
+#include <cstdint>
 #include <fstream>
 #include <mutex>
 
@@ -36,12 +37,13 @@ namespace dsp56k
 			return;
 		if(!header)
 		{
-			out << "stage,cycle,pc,pending,essi0_sr,essi1_sr,essi1_rdf,"
+			out << "stage,dsp,cycle,pc,pending,essi0_sr,essi1_sr,essi1_rdf,"
 				"dma3_dcr,dma3_dsr,dma3_ddr,dma3_dco,dma_dstr,request_source,"
 				"interrupt_enable,inject_result\n";
 			header = true;
 		}
-		out << stage << ',' << cycles << ',' << dsp.getPC().toWord() << ','
+		out << stage << ',' << reinterpret_cast<uintptr_t>(&dsp) << ',' << cycles
+			<< ',' << dsp.getPC().toWord() << ','
 			<< dsp.hasPendingInterrupts() << ','
 			<< essi0 << ',' << essi1 << ',' << ((essi1 >> 7) & 1) << ','
 			<< dcr << ',' << dsr << ',' << ddr << ',' << dco << ',' << dstr << ','
