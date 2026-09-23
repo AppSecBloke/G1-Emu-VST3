@@ -378,13 +378,13 @@ int main(int argc, char** argv)
 #ifdef G1_DSP_TRACE
 	if(const char* tracePath = std::getenv("G1_DSP_TRACE_FILE"))
 	{
-		if(!std::getenv("G1_DSP_TRACE") || overlapNote >= 0 || captureMs < 150)
+		if(overlapNote >= 0 || captureMs < 150)
 		{
-			std::fprintf(stderr, "DSP trace requires G1_DSP_TRACE=1, a single note and at least 0.15 seconds.\n");
+			std::fprintf(stderr, "DSP trace requires a single note and at least 0.15 seconds.\n");
 			return 2;
 		}
-		// Let the MIDI note reach the firmware before selecting one complete DSP0
-		// routine entry. This keeps the trace bounded and excludes patch upload.
+		// Let the MIDI note reach the firmware before arming the bounded DSP0
+		// trace. Entry zero begins at the next normal JIT call.
 		run(mc, 100 * g_ms);
 		const auto entry = std::getenv("G1_DSP_TRACE_START")
 			? static_cast<uint32_t>(std::strtoul(std::getenv("G1_DSP_TRACE_START"), nullptr, 0)) : 0x3f2u;

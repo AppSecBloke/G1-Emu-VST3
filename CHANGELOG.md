@@ -7,6 +7,16 @@ Older entries cite their commit by hand.
 
 ## 2026-09-23
 
+- **Normal-block DSP0 Square diagnostic (Codex; local change, not committed).**
+  Kept DSP0's normal 32-instruction JIT block limit in the diagnostic build and
+  changed the bounded trace to record pre/post state at normal JIT call boundaries.
+  The local-ROM runner now checks the Saw-audio/Square-silent result both without
+  and with observation, retaining both logs and the bounded block/memory traces.
+  Verification: the previous diagnostic executable reproduced Square silence
+  with tracing disabled and Square audio with its one-instruction block switch;
+  reviewed this diff and parsed the updated PowerShell runner. CI compilation and
+  ROM-backed capture of the revised diagnostic remain pending.
+
 - **Bounded DSP0 Square diagnostic trace (Codex; local change, not committed).**
   Added an opt-in, diagnostic-build-only DSP0 JIT-step trace and a matched local-ROM runner for
   the stored-Saw and stored-Square 2OSC cases. The runner records registers, memory snapshots

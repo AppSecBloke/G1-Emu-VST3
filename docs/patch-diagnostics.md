@@ -80,20 +80,22 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\run-square-trace.ps1 -RomP
 ```
 
 It makes a temporary patch differing only in OSC1 waveform (`2` Saw to `3` Square), starts each
-case from a fresh machine, and writes `square-trace.zip` next to the invocation directory. The
-runner checks the executable's build ID/hash and refuses the capture if Saw is not audible or
-Square is not silent under the single-instruction JIT configuration. `Saw` and `Square` each
-contain `run.txt`, P/X/Y dumps, `dsp0-steps.csv` and `dsp0-steps.csv.writes.csv`.
+case from a fresh machine, and writes a dated `square-block-trace-*.zip` next to the invocation directory. The
+runner checks the executable's build ID/hash. It first runs each case without observation, then
+with observation, and refuses the capture unless Saw remains audible and Square remains silent
+in both runs. `Saw` and `Square` each contain `run-baseline.txt`, `run.txt`, P/X/Y dumps,
+`dsp0-steps.csv` and `dsp0-steps.csv.writes.csv`.
 
-The trace starts after 100 ms of the MIDI note, at the first DSP0 entry to `$03B7` (Saw) or
-`$03F2` (Square), and records at most 12000 JIT steps. Each CSV step has pre/post PC, opcode,
+The trace starts after 100 ms of the MIDI note at the next DSP0 JIT call, and records at most
+12000 normal JIT blocks. Each CSV block has pre/post PC, opcode at the block entry,
 cycles, A/B, X/Y data registers, R2–R5, status, X/Y values at candidate address-register
 locations and current output-buffer
 words. The writes CSV records every changed internal X/Y word in `$000`–`$7FF`. The register-address
-values are snapshots, not a claim that the current instruction read each one. A step is one
-JIT block with a one-instruction limit; compare its PC transition before interpreting a row as
-exactly one architectural instruction. The trace changes JIT block size only in this opt-in
-diagnostic run, so the runner's Saw/Square audio checks are necessary controls.
+values are snapshots, not a claim that the current instruction read each one. A row covers a
+normal JIT call, which may execute multiple instructions. DSP0 retains the normal
+`maxInstructionsPerBlock = 32`; the runner's Saw/Square audio checks establish that observation
+has not masked the Square failure. Disassemble the block-entry PCs and compare memory writes
+to narrow a suspect block before attributing a result to a particular instruction.
 
 ## Overlapping-note capture
 

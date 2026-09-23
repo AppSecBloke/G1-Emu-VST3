@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)][string]$RomPath,
-    [string]$OutputDirectory = (Join-Path (Get-Location).Path 'square-trace')
+    [string]$OutputDirectory = (Join-Path (Get-Location).Path ('square-block-trace-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
 )
 
 Set-StrictMode -Version Latest
@@ -17,7 +17,7 @@ foreach ($path in @($RomPath, $exe, $modules, $fixture, $buildInfoPath)) {
     }
 }
 $info = Get-Content -LiteralPath $buildInfoPath -Raw | ConvertFrom-Json
-if ($info.buildId -notlike 'CMPM-build8-squaretrace-*' -or
+if ($info.buildId -notlike 'CMPM-build8-squareblocktrace-*' -or
     $info.executableSha256 -ne (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash) {
     throw 'This bundle is not the matching CMPM-corrected Square trace executable.'
 }
@@ -44,21 +44,35 @@ $names = @('G1_MIDINOTE', 'G1_DSP_TRACE', 'G1_DSP_TRACE_FILE',
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 try {
-    foreach ($name in @('G1_INTERP', 'G1_NO_LA_FIX', 'G1_KNOBS', 'G1_PREPRESS',
-                        'G1_PRESS', 'G1_HOLD', 'G1_HOLD_END', 'G1_DIAL')) {
-        [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+    foreach ($name in $names) {
+        Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue
     }
     foreach ($case in @(
-        @{ Name = 'Saw'; Patch = $fixture; Entry = '0x3b7' },
-        @{ Name = 'Square'; Patch = $square; Entry = '0x3f2' }
+        @{ Name = 'Saw'; Patch = $fixture },
+        @{ Name = 'Square'; Patch = $square }
     )) {
         $caseDir = Join-Path $output $case.Name
         $dumpDir = Join-Path $caseDir 'dumps'
         New-Item -ItemType Directory -Path $dumpDir -Force | Out-Null
         $env:G1_MIDINOTE = '1'
-        $env:G1_DSP_TRACE = '1'
+        Remove-Item -LiteralPath Env:G1_DSP_TRACE_FILE -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath Env:G1_DUMP -ErrorAction SilentlyContinue
+        $baseline = & $exe $RomPath $case.Patch --modules $modules --note 60 --seconds 0.25 2>&1
+        $baseline | Out-File -LiteralPath (Join-Path $caseDir 'run-baseline.txt') -Encoding utf8
+        if ($LASTEXITCODE -ne 0) { throw "$($case.Name) unobserved diagnostic exited with $LASTEXITCODE" }
+        $baselineText = $baseline -join "`n"
+        if ($baselineText -notmatch 'pid=1' -or $baselineText -notmatch '\( 4\)') {
+            throw "$($case.Name) unobserved run did not upload as a four-voice patch."
+        }
+        if (($case.Name -eq 'Saw' -and $baselineText -notmatch 'output 1: peak') -or
+            ($case.Name -eq 'Square' -and $baselineText -notmatch 'output 1: silence')) {
+            throw "$($case.Name) unobserved audio did not reproduce the expected baseline/failure."
+        }
+
         $env:G1_DSP_TRACE_FILE = Join-Path $caseDir 'dsp0-steps.csv'
-        $env:G1_DSP_TRACE_START = $case.Entry
+        # Entry 0 starts at the next DSP0 JIT call. Waiting for $03F2 would
+        # miss it when that instruction lies inside a normal 32-word block.
+        $env:G1_DSP_TRACE_START = '0'
         $env:G1_DSP_TRACE_STEPS = '12000'
         $env:G1_DUMP = $dumpDir
         $result = & $exe $RomPath $case.Patch --modules $modules --note 60 --seconds 0.25 2>&1
@@ -78,7 +92,11 @@ try {
 }
 finally {
     foreach ($name in $names) {
-        [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process')
+        if ($null -eq $previous[$name]) {
+            Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue
+        } else {
+            [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process')
+        }
     }
 }
 
@@ -88,8 +106,9 @@ finally {
     romSha256 = (Get-FileHash -LiteralPath $RomPath -Algorithm SHA256).Hash
     sawPatchSha256 = (Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash
     squarePatchSha256 = (Get-FileHash -LiteralPath $square -Algorithm SHA256).Hash
-    traceEntrySaw = '0x3b7'
-    traceEntrySquare = '0x3f2'
+    traceEntrySaw = 'next JIT call after 100 ms'
+    traceEntrySquare = 'next JIT call after 100 ms'
+    dsp0MaxInstructionsPerBlock = 32
     traceStepsRequested = 12000
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'trace-info.json') -Encoding UTF8
 $zip = "$output.zip"

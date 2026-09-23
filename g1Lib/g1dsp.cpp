@@ -76,11 +76,6 @@ namespace g1
 		config.dynamicPeripheralAddressing = false;
 		config.dynamicFastInterrupts = true;
 		config.maxInstructionsPerBlock = 32;
-#ifdef G1_DSP_TRACE
-		// Diagnostic bundles opt into single-instruction JIT blocks only for DSP0.
-		if(_index == 0 && std::getenv("G1_DSP_TRACE"))
-			config.maxInstructionsPerBlock = 1;
-#endif
 		config.maxDoIterations = 1;
 		m_dsp.getJit().setConfig(config);
 
@@ -232,7 +227,7 @@ namespace g1
 	{
 		if(!m_traceStarted)
 		{
-			if(m_dsp.getPC().toWord() != m_traceEntry)
+			if(m_traceEntry && m_dsp.getPC().toWord() != m_traceEntry)
 			{
 				m_dsp.exec();
 				return;
