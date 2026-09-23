@@ -50,7 +50,10 @@ jobs:
       - name: Build Windows deliverables
         run: >
           cmake --build build --config Release --parallel
-          --target g1run g1gui g1vst3_VST3
+          --target g1run g1gui g1vst3_VST3 g1dspcheck
+
+      - name: Check DSP regressions without a ROM
+        run: ctest --test-dir build -C Release -L g1 --output-on-failure
 
       - name: Package
         shell: pwsh

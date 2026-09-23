@@ -145,6 +145,31 @@ namespace
 		require(m.dsp.regs().sp.var == 2 || m.dsp.regs().sp.var == 4, "nested DO corrupts the stack");
 		require(m.dsp.getPC().toWord() >= 0x102 && m.dsp.getPC().toWord() <= 0x106, "the outer DO stops repeating");
 	}
+
+	void cmpmPreservesAccumulators(uint32_t blockSize)
+	{
+		// Saw uses all three forms: CMPM A,B, CMPM A,B B,Y0, CMPM A,B (R3)+.
+		// Negative A used to be replaced by |A| in the JIT's magnitude comparison.
+		for(const auto op : {0x20000fu, 0x21e60fu, 0x205b0fu})
+		{
+			Machine m(blockSize);
+			m.program(0x100, {op, 0x0c0102, 0x0c0102});
+			const int64_t a = -(int64_t{0x234567} << 32);
+			const int64_t b = int64_t{0x123456} << 32;
+			m.dsp.regs().a.var = a;
+			m.dsp.regs().b.var = b;
+			m.dsp.setPC(0x100);
+			m.until(0x102);
+			require(m.dsp.regs().a.var == a, "CMPM modified negative source accumulator A");
+			require(m.dsp.regs().b.var == b, "CMPM modified destination accumulator B");
+			if(op == 0x21e60fu)
+			{
+				dsp56k::TReg24 y0;
+				require(m.dsp.readReg(dsp56k::Reg_Y0, y0) && y0.var == 0x123456,
+					"CMPM parallel move did not copy B to Y0");
+			}
+		}
+	}
 }
 
 int main()
@@ -178,8 +203,9 @@ int main()
 			run("finite DO", [=] { finiteLoop(blockSize); });
 			run("nested finite DO", [=] { nestedFiniteLoop(blockSize); });
 			run("DO FOREVER with nested DO", [=] { nestedLoop(blockSize); });
+			run("CMPM accumulator preservation", [=] { cmpmPreservesAccumulators(blockSize); });
 		}
-		std::puts("OK: short MOVEM, JIT invalidation, DO FOREVER, IRQD and nested DO (blocks 1/32)");
+		std::puts("OK: short MOVEM, JIT invalidation, DO FOREVER, IRQD, nested DO and CMPM (blocks 1/32)");
 		return 0;
 	}
 	catch(const std::exception& error)

@@ -200,7 +200,7 @@ private:
 
 G1PluginEditor::G1PluginEditor(G1PluginProcessor& p) : AudioProcessorEditor(&p), proc(p)
 {
-    title.setText("G1-Emu - Nord Modular G1 emulator - playability build #7", juce::dontSendNotification);
+    title.setText("G1-Emu - Nord Modular G1 emulator - playability build #8 - CMPM fix", juce::dontSendNotification);
     title.setFont(juce::FontOptions(20.0f, juce::Font::bold));
     diag.setFont(juce::FontOptions(14.0f));
     diag.setJustificationType(juce::Justification::topLeft);

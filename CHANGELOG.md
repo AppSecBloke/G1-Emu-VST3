@@ -7,6 +7,16 @@ Older entries cite their commit by hand.
 
 ## 2026-09-23
 
+- **VST3 playability build #8 CMPM correction (Codex; local change, not committed).**
+  The build overlay now copies accumulator-source CMPM operands to a temporary before the
+  magnitude comparison, preserving the original A/B registers in the G1 Saw routine.
+  Added ROM-free JIT checks for plain CMPM A,B and the two Saw parallel-move forms,
+  each at one- and 32-instruction block sizes; the Windows VST workflow now builds and
+  runs those checks before packaging. Updated the visible plug-in title to identify this
+  build. Verification: reviewed the overlay-to-dsp56kEmu target path and the diff;
+  local CMake/MSVC compilation is unavailable, so CI compilation and a ROM-backed Saw
+  playback test remain pending.
+
 - **Diagnostic runner PowerShell 5.1 path fix (Codex; local change, not committed).**
   Reproduced the empty LiteralPath failure with the documented powershell.exe -File command:
   PSScriptRoot was empty during the BundleDirectory parameter-default evaluation. Resolve

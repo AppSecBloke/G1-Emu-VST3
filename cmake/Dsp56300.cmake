@@ -31,6 +31,13 @@ g1_dsp_replace(opcodeanalysis.h
 	"case Movem_ea:\n\t\t\t{\n\t\t\t\tconst auto write = getFieldValue<Movem_ea, Field_W>(op);"
 	"case Movem_aa:\n\t\t\treturn !getFieldValue<Movem_aa, Field_W>(op);\n\t\tcase Movem_ea:\n\t\t\t{\n\t\t\t\tconst auto write = getFieldValue<Movem_ea, Field_W>(op);")
 
+# CMPM compares magnitudes without changing either operand. An accumulator source
+# is a pooled register reference; alu_cmp() takes its absolute value in place.
+# Copy that source to a temporary before the comparison (also for parallel moves).
+g1_dsp_replace(jitops_alu.cpp
+	"const auto r = decode_JJJ_read_56(JJJ, !D);\n\t\talu_cmp(D, r64(r.get()), true);"
+	"auto r = decode_JJJ_read_56(JJJ, !D);\n\t\tr.toTemp();\n\t\talu_cmp(D, r64(r.get()), true);")
+
 # DO FOREVER keeps LC. At the loop end, FV prevents decrementing LC or leaving.
 g1_dsp_replace(jitblock.cpp
 	"\t\t\tm_asm.cmp(lc, asmjit::Imm(1));\n\t\t\tm_asm.jle(enddo);\n\t\t\tm_asm.dec(lc);"
@@ -126,6 +133,11 @@ foreach(source IN LISTS g1_dsp_sources)
 	endif()
 endforeach()
 set_property(TARGET dsp56kEmu PROPERTY SOURCES "${g1_dsp_build_sources}")
+list(FIND g1_dsp_build_sources "${g1_dsp_overlay}/jitops_alu.cpp" g1_cmpm_source_index)
+if(g1_cmpm_source_index EQUAL -1)
+	message(FATAL_ERROR "CMPM correction is not in the dsp56kEmu source list")
+endif()
+message(STATUS "G1 DSP CMPM correction: ${g1_dsp_overlay}/jitops_alu.cpp")
 target_include_directories(dsp56kEmu BEFORE PUBLIC "${CMAKE_BINARY_DIR}/g1-dsp")
 target_include_directories(dsp56kEmu PRIVATE "${g1_dsp_source}")
 target_sources(dsp56kEmu PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../g1Lib/dsp56300.cpp")
