@@ -117,6 +117,19 @@ g1_dsp_replace(dma.cpp
 	"		assert(false && \"DMA transfer mode not supported yet\");\n		return true;\n	}"
 	"		if(agmS == AddressGenMode::SingleCounterAnoUpdate && agmD == AddressGenMode::SingleCounterAnoUpdate)\n		{\n			memWrite(areaD, m_ddr, memRead(areaS, m_dsr));\n			if(isRequestTrigger() && m_dco)\n			{\n				--m_dco;\n				return false;\n			}\n			m_dco = m_dcomInit;\n			return true;\n		}\n\n		assert(false && \"DMA transfer mode not supported yet\");\n		return true;\n	}")
 
+# Observe DMA3's ESSI1 request and vector-$1E injection only in diagnostic builds.
+if(G1_DSP_TRACE)
+	g1_dsp_replace(dma.cpp
+		"#include \"interrupts.h\""
+		"#include \"interrupts.h\"\n#include \"g1_dma_trace.h\"")
+	g1_dsp_replace(dma.cpp
+		"void DmaChannel::triggerByRequest()\n\t{\n\t\tif(!bittest(m_dcr, De))"
+		"void DmaChannel::triggerByRequest()\n\t{\n\t\tg1TraceDma3(\"request_enter\", m_peripherals, m_index, m_dcr, m_dsr, m_ddr, m_dco, m_dma.getDSTR());\n\t\tif(!bittest(m_dcr, De))")
+	g1_dsp_replace(dma.cpp
+		"\t\tif(bitvalue(m_dcr, Die))\n\t\t\tm_peripherals.getDSP().injectInterrupt(Vba_DMAchannel0 + (m_index<<1));"
+		"\t\tif(bitvalue(m_dcr, Die))\n\t\t{\n\t\t\tg1TraceDma3(\"enqueue_pre\", m_peripherals, m_index, m_dcr, m_dsr, m_ddr, m_dco, m_dma.getDSTR());\n\t\t\tconst auto injected = m_peripherals.getDSP().injectInterrupt(Vba_DMAchannel0 + (m_index<<1));\n\t\t\tg1TraceDma3(\"enqueue_post\", m_peripherals, m_index, m_dcr, m_dsr, m_ddr, m_dco, m_dma.getDSTR(), injected ? 1 : 0);\n\t\t}")
+endif()
+
 foreach(source IN LISTS g1_dsp_files)
 	get_filename_component(name "${source}" NAME)
 	configure_file("${g1_dsp_prepare}/${name}" "${g1_dsp_overlay}/${name}" COPYONLY)
@@ -140,4 +153,7 @@ endif()
 message(STATUS "G1 DSP CMPM correction: ${g1_dsp_overlay}/jitops_alu.cpp")
 target_include_directories(dsp56kEmu BEFORE PUBLIC "${CMAKE_BINARY_DIR}/g1-dsp")
 target_include_directories(dsp56kEmu PRIVATE "${g1_dsp_source}")
+if(G1_DSP_TRACE)
+	target_include_directories(dsp56kEmu PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../g1Lib")
+endif()
 target_sources(dsp56kEmu PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../g1Lib/dsp56300.cpp")

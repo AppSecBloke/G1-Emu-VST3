@@ -5,6 +5,15 @@ its line here, in the same commit** (see `CLAUDE.md`). Each entry says who made 
 and how it was checked; the commit is the one that brings the entry (`git log -- CHANGELOG.md`).
 Older entries cite their commit by hand.
 
+## 2026-09-24
+
+- **Internal DSP0 DMA3 interrupt diagnostic (Codex; local change, not committed).**
+  Added an opt-in, cycle-bounded trace in the diagnostic dsp56300 build copy at
+  DMA3 ESSI1 request handling and vector `$1E` injection, and a matched
+  Square-32/Square-1 runner window. Production DSP behaviour and the CMPM fix
+  are unchanged. Verification: static diff and PowerShell syntax checks;
+  CI compilation and ROM-backed comparison remain pending.
+
 ## 2026-09-23
 
 - **DSP0 Square host-wait and DMA3 diagnostic (Codex; local change, not committed).**

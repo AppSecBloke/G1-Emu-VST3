@@ -174,6 +174,18 @@ first 9,000 DSP cycles after word 195, enough to cover Square-32's first free
 boundary and the working Square-1 command. Use `-SettleTrace -FocusMs 25`;
 the audio acceptance checks and normal 32-instruction Square run are unchanged.
 
+The `squareinternaldma` build adds a trace inside the diagnostic copy of dsp56300's
+DMA3 ESSI1 request handler and vector `$1E` injection call. Run
+`run-square-startup.ps1 -RomPath 'C:\path\NORD-MODULAR-RACK-VER-3.03.BIN' -SettleTrace -FocusMs 25`.
+`Square-32/dsp0-dma3-internal.csv` covers DSP0 cycles 214241712–214241766;
+`Square-1-reference/dsp0-dma3-internal.csv` covers its equivalent host wait at
+214239700–214239930. Each row records the request/interrupt stage, cycle, PC,
+pending flag, ESSI status, and DMA3 control/source/destination/count/status.
+The pre/post enqueue rows also record whether interrupt injection succeeded.
+Correlate them with `dsp0-settle.csv.host-blocks.csv` and `.host-waits.csv`.
+The runner still requires Saw-32 audio, Square-32 silence and Square-1 audio;
+it fails rather than relaxing those checks if the trace changes behaviour.
+
 ## Overlapping-note capture
 
 The same bundle can capture two overlapping notes through the G1 MIDI IN path. Run this
