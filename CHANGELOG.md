@@ -7,6 +7,14 @@ Older entries cite their commit by hand.
 
 ## 2026-09-23
 
+- **DSP0 Square host-wait and DMA3 diagnostic (Codex; local change, not committed).**
+  Added bounded, opt-in logging of each `runUntil(+16)` entry/target/exit for the
+  first word-195 host command, plus DMA3 control, source, destination, count and
+  status at JIT boundaries. This tests whether the wrapper passes a pending-free
+  boundary or DMA3 changes unexpectedly, without changing execution policy.
+  Verification: static source/diff and PowerShell syntax checks; CI compilation
+  and ROM-backed A/B trace remain pending.
+
 - **DSP0 Square interrupt-boundary diagnostic (Codex; local change, not committed).**
   Added an opt-in, bounded trace of every DSP0 JIT return from host word 195,
   recording interrupt pending state, last vector, ESSI status, priority and mask

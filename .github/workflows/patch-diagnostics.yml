@@ -81,7 +81,7 @@ jobs:
           Copy-Item G1-Emu/docs/patch-diagnostics.md diagnostic-bundle/README.md
           Copy-Item G1-Emu/LICENSE diagnostic-bundle/
           $info = [ordered]@{
-            buildId = "CMPM-build8-squareirqboundary-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+            buildId = "CMPM-build8-squaredmawait-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
             g1 = (git -C G1-Emu rev-parse HEAD)
             gearmulator = (git -C gearmulator-md-mm rev-parse HEAD)
             dsp56300 = (git -C gearmulator-md-mm/source/dsp56300 rev-parse HEAD)
@@ -90,7 +90,7 @@ jobs:
             juce = (git -C JUCE rev-parse HEAD)
             nme = (git -C Animatek-NME rev-parse HEAD)
             submodules = @(git -C gearmulator-md-mm submodule status --recursive)
-            configuration = 'Release, x64, static MSVC runtime, CMPM overlay and opt-in DSP0 word-195 JIT interrupt-boundary trace (32 failing, 1 reference)'
+            configuration = 'Release, x64, static MSVC runtime, CMPM overlay and opt-in DSP0 word-195 host-wait/DMA3 trace (32 failing, 1 reference)'
             runnerImage = $env:ImageVersion
             runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
             executableSha256 = (Get-FileHash diagnostic-bundle/g1patchtest.exe -Algorithm SHA256).Hash
@@ -120,7 +120,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: G1-patch-diagnostics-CMPM-build8-squareirqboundary-${{ github.run_id }}-${{ github.run_attempt }}
+          name: G1-patch-diagnostics-CMPM-build8-squaredmawait-${{ github.run_id }}-${{ github.run_attempt }}
           path: diagnostic-bundle/
           if-no-files-found: error
           retention-days: 14

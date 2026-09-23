@@ -323,6 +323,9 @@ namespace g1
 		m_settleHostBlocks.open(std::string(_path) + ".host-blocks.csv", std::ios::out | std::ios::trunc);
 		if(!m_settleHostBlocks)
 			return false;
+		m_settleHostWaits.open(std::string(_path) + ".host-waits.csv", std::ios::out | std::ios::trunc);
+		if(!m_settleHostWaits)
+			return false;
 		if(const char* focus = std::getenv("G1_DSP_SETTLE_FOCUS_MS"))
 			m_settleFocusMs = static_cast<uint32_t>(std::strtoul(focus, nullptr, 10));
 		m_settleBlocksTrace << "ms,block,cause,pre_pc,post_pc,pre_opcode,pre_cycles,post_cycles,"
@@ -334,7 +337,13 @@ namespace g1
 		m_settleHostBlocks << "ms,block,cause,pre_pc,post_pc,pre_opcode,pre_cycles,post_cycles,"
 			"pre_sr,post_sr,pre_rx,post_rx,pre_pending,post_pending,pre_vector,post_vector,"
 			"pre_essi0_sr,post_essi0_sr,pre_essi1_sr,post_essi1_sr,pre_iprc,post_iprc,"
-			"pre_irqd_masked,post_irqd_masked,pre_vector1e_masked,post_vector1e_masked\n";
+			"pre_irqd_masked,post_irqd_masked,pre_vector1e_masked,post_vector1e_masked,"
+			"pre_dma3_dcr,post_dma3_dcr,pre_dma3_dsr,post_dma3_dsr,"
+			"pre_dma3_ddr,post_dma3_ddr,pre_dma3_dco,post_dma3_dco,pre_dma_dstr,post_dma_dstr\n";
+		m_settleHostWaits << "wait,word_cycle,entry_cycle,target_cycle,exit_cycle,entry_pc,exit_pc,"
+			"entry_pending,exit_pending,first_block,next_block,free_blocks,first_free_cycle,first_free_pc,"
+			"entry_dma3_dcr,exit_dma3_dcr,entry_dma3_dsr,exit_dma3_dsr,"
+			"entry_dma3_ddr,exit_dma3_ddr,entry_dma3_dco,exit_dma3_dco,entry_dma_dstr,exit_dma_dstr\n";
 		m_settleTrace << "uc_cycles,cpu_host_accesses,dsp_cycles,pc,opcode,sr,la,irqd_count,next_irqd,host_words,host_commands,"
 			"rx_depth,pending_interrupts,x1d,x1e,x1f,blocks,top_pc,top_pc_blocks,max_block_pc,max_block_cycles,"
 			"catchup_calls,catchup_cycles,hostword_calls,hostword_cycles,hostcommand_calls,hostcommand_cycles,"
@@ -359,6 +368,12 @@ namespace g1
 		s.iprc = m_periph.read(0xffffff, dsp56k::Instruction::Invalid);
 		s.irqdMasked = m_dsp.isInterruptMasked(g_irqdVector);
 		s.vector1eMasked = m_dsp.isInterruptMasked(0x1e);
+		auto& dma = m_periph.getDMA();
+		s.dma3Dcr = dma.getDCR(3);
+		s.dma3Dsr = dma.getDSR(3);
+		s.dma3Ddr = dma.getDDR(3);
+		s.dma3Dco = dma.getDCO(3);
+		s.dmaDstr = dma.getDSTR();
 		return s;
 	}
 
@@ -432,6 +447,14 @@ namespace g1
 		if(trackHostBlock)
 		{
 			const auto interruptAfter = interruptBoundary();
+			if(m_hostWaitBlockActive && !interruptAfter.pending)
+			{
+				if(m_hostWaitFreeCount++ == 0)
+				{
+					m_hostWaitFirstFreeCycle = after.cycles;
+					m_hostWaitFirstFreePc = after.pc;
+				}
+			}
 			m_settleHostBlocks << m_settleSampleIndex << ',' << m_settleLoggedHostBlocks++ << ','
 				<< m_settleActiveCause << ',' << before.pc << ',' << after.pc << ',' << before.opcode
 				<< ',' << before.cycles << ',' << after.cycles << ',' << before.sr << ',' << after.sr
@@ -442,7 +465,12 @@ namespace g1
 				<< interruptBefore.essi1Sr << ',' << interruptAfter.essi1Sr << ','
 				<< interruptBefore.iprc << ',' << interruptAfter.iprc << ','
 				<< interruptBefore.irqdMasked << ',' << interruptAfter.irqdMasked << ','
-				<< interruptBefore.vector1eMasked << ',' << interruptAfter.vector1eMasked << '\n';
+				<< interruptBefore.vector1eMasked << ',' << interruptAfter.vector1eMasked << ','
+				<< interruptBefore.dma3Dcr << ',' << interruptAfter.dma3Dcr << ','
+				<< interruptBefore.dma3Dsr << ',' << interruptAfter.dma3Dsr << ','
+				<< interruptBefore.dma3Ddr << ',' << interruptAfter.dma3Ddr << ','
+				<< interruptBefore.dma3Dco << ',' << interruptAfter.dma3Dco << ','
+				<< interruptBefore.dmaDstr << ',' << interruptAfter.dmaDstr << '\n';
 		}
 		if(trackHost)
 		{
@@ -884,7 +912,10 @@ namespace g1
 		if(_word == 195 && !m_settleHostBlocksTriggered &&
 			m_settleSampleIndex >= static_cast<int32_t>(m_settleFocusMs) &&
 			m_settleSampleIndex <= static_cast<int32_t>(m_settleFocusMs) + 1)
+		{
 			m_settleHostBlocksTriggered = true;
+			m_settleHostWordCycle = m_dsp.getCycles();
+		}
 		if(traceHost)
 			settleEvent("host_word_enqueued", _word, afterWait, settleEventCapture());
 		watchExternal("host_word");
@@ -898,13 +929,50 @@ namespace g1
 #ifdef G1_DSP_TRACE
 		const bool traceHost = settleEventsActive();
 		const auto hostBefore = traceHost ? settleEventCapture() : SettleEventSnapshot{};
+		const bool traceFirstCommand = _vector == 0x7e && m_settleHostBlocksTriggered &&
+			!m_settleFirstCommandTraced;
 #endif
 		// The real DSP services each host command as soon as it arrives. Here it is allowed to run
 		// until it has dispatched what is pending: otherwise the external interrupt queue
 		// (32 entries) fills up and injectExternalInterrupt waits forever.
 		const auto stop = m_dsp.getCycles() + g_waitClamp;
 		while(m_dsp.hasPendingInterrupts() && m_booted && m_dsp.getCycles() < stop)
-			runUntil(m_dsp.getCycles() + 16, RunCause::HostCommand);
+		{
+			const auto target = m_dsp.getCycles() + 16;
+#ifdef G1_DSP_TRACE
+			const bool traceWait = traceFirstCommand && m_settleHostWaits.is_open() &&
+				m_dsp.getCycles() < m_settleHostWordCycle + 9000 && m_settleLoggedHostWaits < 2048;
+			const auto entry = traceWait ? interruptBoundary() : InterruptBoundary{};
+			const auto entryCycle = m_dsp.getCycles();
+			const auto entryPc = traceWait ? m_dsp.getPC().toWord() : 0;
+			const auto firstBlock = m_settleLoggedHostBlocks;
+			m_hostWaitFreeCount = 0;
+			m_hostWaitFirstFreeCycle = 0;
+			m_hostWaitFirstFreePc = 0;
+			m_hostWaitBlockActive = traceWait;
+#endif
+			runUntil(target, RunCause::HostCommand);
+#ifdef G1_DSP_TRACE
+			m_hostWaitBlockActive = false;
+			if(traceWait)
+			{
+				const auto result = interruptBoundary();
+				m_settleHostWaits << m_settleLoggedHostWaits++ << ',' << m_settleHostWordCycle << ','
+					<< entryCycle << ',' << target << ',' << m_dsp.getCycles() << ','
+					<< entryPc << ',' << m_dsp.getPC().toWord() << ',' << entry.pending << ','
+					<< result.pending << ',' << firstBlock << ',' << m_settleLoggedHostBlocks << ','
+					<< m_hostWaitFreeCount << ',' << m_hostWaitFirstFreeCycle << ','
+					<< m_hostWaitFirstFreePc << ',' << entry.dma3Dcr << ',' << result.dma3Dcr
+					<< ',' << entry.dma3Dsr << ',' << result.dma3Dsr << ',' << entry.dma3Ddr
+					<< ',' << result.dma3Ddr << ',' << entry.dma3Dco << ',' << result.dma3Dco
+					<< ',' << entry.dmaDstr << ',' << result.dmaDstr << '\n';
+			}
+#endif
+		}
+#ifdef G1_DSP_TRACE
+		if(traceFirstCommand)
+			m_settleFirstCommandTraced = true;
+#endif
 		if(m_dsp.hasPendingInterrupts())
 		{
 #ifdef G1_DSP_TRACE

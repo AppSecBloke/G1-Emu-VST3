@@ -165,6 +165,15 @@ IRQD/vector-`$1E` mask states. Compare successive rows to see whether the host-c
 wait encounters an interrupt-free JIT boundary. The same runner still requires
 Saw-32 and Square-1 audio and Square-32 silence.
 
+The `squaredmawait` build extends each host-block row with DMA3 control (DCR),
+source (DSR), destination (DDR), count (DCO), and global DMA status (DSTR).
+`dsp0-settle.csv.host-waits.csv` records each `runUntil(+16)` entry, target and
+exit for the first `$7E` attempt after word 195, including pending state and
+the first intermediate pending-free JIT boundary. Logging is limited to the
+first 9,000 DSP cycles after word 195, enough to cover Square-32's first free
+boundary and the working Square-1 command. Use `-SettleTrace -FocusMs 25`;
+the audio acceptance checks and normal 32-instruction Square run are unchanged.
+
 ## Overlapping-note capture
 
 The same bundle can capture two overlapping notes through the G1 MIDI IN path. Run this

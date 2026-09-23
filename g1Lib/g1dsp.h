@@ -141,6 +141,7 @@ namespace g1
 		struct InterruptBoundary
 		{
 			uint32_t essi0Sr = 0, essi1Sr = 0, iprc = 0, lastVector = 0;
+			uint32_t dma3Dcr = 0, dma3Dsr = 0, dma3Ddr = 0, dma3Dco = 0, dmaDstr = 0;
 			bool pending = false, irqdMasked = false, vector1eMasked = false;
 		};
 		InterruptBoundary interruptBoundary();
@@ -184,6 +185,7 @@ namespace g1
 		std::ofstream m_settleBlocksTrace;
 		std::ofstream m_settleEvents;
 		std::ofstream m_settleHostBlocks;
+		std::ofstream m_settleHostWaits;
 		std::array<uint64_t, static_cast<size_t>(RunCause::Count)> m_settleCalls{}, m_settleCycles{};
 		std::map<uint32_t, uint64_t> m_settlePcs;
 		uint64_t m_settleBlocks = 0, m_settleMaxBlockCycles = 0;
@@ -192,7 +194,11 @@ namespace g1
 		uint32_t m_settleFocusMs = 0, m_settleLoggedBlocks = 0, m_settleActiveCause = 0;
 		uint32_t m_settleLoggedEvents = 0;
 		uint32_t m_settleLoggedHostBlocks = 0;
+		uint32_t m_settleLoggedHostWaits = 0, m_hostWaitFreeCount = 0;
+		uint32_t m_hostWaitFirstFreePc = 0;
+		uint64_t m_settleHostWordCycle = 0, m_hostWaitFirstFreeCycle = 0;
 		bool m_settleHostBlocksTriggered = false;
+		bool m_settleFirstCommandTraced = false, m_hostWaitBlockActive = false;
 		std::array<dsp56k::TWord, 3> m_watchLast{};
 		std::string m_watchStage = "upload";
 		uint64_t m_watchCall = 0;
