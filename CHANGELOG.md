@@ -7,6 +7,15 @@ Older entries cite their commit by hand.
 
 ## 2026-09-23
 
+- **DSP0 Square post-upload cycle probe (Codex; local change, not committed).** Added
+  opt-in, diagnostic-build-only millisecond sampling and a bounded focused block trace
+  for the 300 ms after patch upload. The probe separates ordinary catch-up from host
+  word, host-command, ISR-read and RX-empty execution, and records PC, IRQ and register
+  context for Saw-32, failing Square-32 and working Square-1. Normal 32-instruction
+  execution and audio acceptance checks remain unchanged. Verification: source and
+  diff review, PowerShell syntax and repository whitespace checks; CI build and
+  ROM-backed trace remain pending.
+
 - **DSP0 Square startup watch (Codex; local change, not committed).** Added a
   diagnostic-only watch for `X:$1D–$1F` across patch upload, DSP loading and note-on,
   logging changed 32-instruction JIT blocks with register context and stage checkpoints.

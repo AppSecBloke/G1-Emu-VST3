@@ -255,7 +255,31 @@ int main(int argc, char** argv)
 		std::printf("the OS has not confirmed the patch\n");
 		return 1;
 	}
-	run(mc, 300 * g_ms);	// let the OS load the DSPs
+#ifdef G1_DSP_TRACE
+	if(const char* settlePath = std::getenv("G1_DSP_SETTLE_FILE"))
+	{
+		if(!mc.getDsp(0).armSettleTrace(settlePath))
+		{
+			std::fprintf(stderr, "Could not arm the DSP0 post-upload settling trace.\n");
+			return 2;
+		}
+		const auto start = mc.ucCycles();
+		const auto end = start + 300 * g_ms;
+		auto nextSample = start + g_ms;
+		mc.getDsp(0).settleSample(start);
+		while(mc.ucCycles() < end)
+		{
+			mc.exec();
+			if(mc.ucCycles() >= nextSample)
+			{
+				mc.getDsp(0).settleSample(mc.ucCycles());
+				nextSample += g_ms;
+			}
+		}
+	}
+	else
+#endif
+		run(mc, 300 * g_ms);	// let the OS load the DSPs
 #ifdef G1_DSP_TRACE
 	mc.getDsp(0).startupCheckpoint("after_dsp_load");
 #endif

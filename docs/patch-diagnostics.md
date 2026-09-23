@@ -124,6 +124,25 @@ instruction; an intermediate write that is reversed inside the same block is not
 to this probe. The one-instruction reference helps narrow such a block without changing
 the failing run.
 
+For the post-upload cycle divergence, the diagnostic bundle can add a bounded
+settling trace without changing the 32-instruction failing configuration:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run-square-startup.ps1 -RomPath 'D:\path\to\NORD-MODULAR-RACK-VER-3.03.BIN' -SettleTrace
+```
+
+Each case includes `dsp0-settle.csv`, sampled once per emulated millisecond during
+the original continuous 300 ms load interval. It records DSP0 cycles and PC,
+IRQD/host-port state, the most frequent JIT block-entry PC, largest block cycle
+advance, and separate cycle totals for regular catch-up, host-word waits, host
+commands, ISR reads and RX-empty polling. `dsp0-settle.csv.blocks.csv` records
+pre/post PC, cycles, status, registers and watched X words for at most 20,000
+blocks in the first millisecond. Its `cause` field is 0=catch-up, 1=host word,
+2=host command, 3=ISR read, 4=RX-empty callback. After finding the first divergent millisecond,
+rerun with `-SettleTrace -FocusMs N` to capture that millisecond instead. The
+runner still rejects any run in which the known Saw-audible, Square-silent,
+Square-reference-audible pattern changes. No ROM is packaged.
+
 ## Overlapping-note capture
 
 The same bundle can capture two overlapping notes through the G1 MIDI IN path. Run this

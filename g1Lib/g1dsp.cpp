@@ -155,7 +155,7 @@ namespace g1
 		m_hdiUc.setRxEmptyCallback([this](const bool _needMoreData)
 		{
 			if(_needMoreData && m_booted && !hdi08().hasTX())
-				runUntil(m_dsp.getCycles() + g_waitClamp);
+				runUntil(m_dsp.getCycles() + g_waitClamp, RunCause::RxEmpty);
 			transferToHost();
 		});
 		m_hdiUc.setForceTxde(false);
@@ -300,6 +300,58 @@ namespace g1
 		m_startupWatch.flush();
 	}
 
+	bool Dsp::armSettleTrace(const char* _path)
+	{
+		if(m_index != 0 || !_path || !_path[0] || !m_startupWatch.is_open() || m_settleTrace.is_open())
+			return false;
+		m_settleTrace.open(_path, std::ios::out | std::ios::trunc);
+		if(!m_settleTrace)
+			return false;
+		m_settleBlocksTrace.open(std::string(_path) + ".blocks.csv", std::ios::out | std::ios::trunc);
+		if(!m_settleBlocksTrace)
+			return false;
+		if(const char* focus = std::getenv("G1_DSP_SETTLE_FOCUS_MS"))
+			m_settleFocusMs = static_cast<uint32_t>(std::strtoul(focus, nullptr, 10));
+		m_settleBlocksTrace << "ms,block,cause,pre_pc,post_pc,pre_opcode,pre_cycles,post_cycles,"
+			"pre_sr,post_sr,pre_a,post_a,pre_b,post_b,pre_r3,post_r3,pre_r4,post_r4,"
+			"pre_x1d,post_x1d,pre_x1e,post_x1e,pre_x1f,post_x1f,irqd_count,rx_depth\n";
+		m_settleTrace << "uc_cycles,dsp_cycles,pc,opcode,sr,la,irqd_count,next_irqd,host_words,host_commands,"
+			"rx_depth,pending_interrupts,x1d,x1e,x1f,blocks,top_pc,top_pc_blocks,max_block_pc,max_block_cycles,"
+			"catchup_calls,catchup_cycles,hostword_calls,hostword_cycles,hostcommand_calls,hostcommand_cycles,"
+			"readisr_calls,readisr_cycles,rxempty_calls,rxempty_cycles\n";
+		return true;
+	}
+
+	void Dsp::settleSample(const uint64_t _ucCycles)
+	{
+		if(!m_settleTrace.is_open())
+			return;
+		uint32_t topPc = 0;
+		uint64_t topCount = 0;
+		for(const auto& [pc, count] : m_settlePcs)
+			if(count > topCount) { topPc = pc; topCount = count; }
+		const auto pc = m_dsp.getPC().toWord();
+		m_settleTrace << _ucCycles << ',' << m_dsp.getCycles() << ',' << pc << ','
+			<< (pc < m_memory.sizeP() ? m_memory.get(dsp56k::MemArea_P, pc) : 0) << ','
+			<< m_dsp.getSR().toWord() << ',' << m_dsp.regs().la.var << ',' << m_irqdCount << ','
+			<< m_nextIrqd << ',' << m_hostWords << ',' << m_hostCommands << ','
+			<< hdi08().rxData().size() << ',' << m_dsp.hasPendingInterrupts();
+		for(uint32_t i = 0x1d; i <= 0x1f; ++i)
+			m_settleTrace << ',' << m_memory.get(dsp56k::MemArea_X, i);
+		m_settleTrace << ',' << m_settleBlocks << ',' << topPc << ',' << topCount << ','
+			<< m_settleMaxBlockPc << ',' << m_settleMaxBlockCycles;
+		for(size_t i = 0; i < m_settleCalls.size(); ++i)
+			m_settleTrace << ',' << m_settleCalls[i] << ',' << m_settleCycles[i];
+		m_settleTrace << '\n';
+		m_settleTrace.flush();
+		m_settleCalls.fill(0);
+		m_settleCycles.fill(0);
+		m_settlePcs.clear();
+		m_settleBlocks = m_settleMaxBlockCycles = 0;
+		m_settleMaxBlockPc = 0;
+		++m_settleSampleIndex;
+	}
+
 	void Dsp::watchExec()
 	{
 		watchExternal("between_calls");
@@ -307,6 +359,19 @@ namespace g1
 		m_dsp.exec();
 		const auto after = watchCapture();
 		++m_watchCall;
+		if(m_settleBlocksTrace.is_open() &&
+			m_settleSampleIndex == static_cast<int32_t>(m_settleFocusMs) &&
+			m_settleLoggedBlocks < 20000)
+		{
+			m_settleBlocksTrace << m_settleFocusMs << ',' << m_settleLoggedBlocks++ << ','
+				<< m_settleActiveCause << ',' << before.pc << ',' << after.pc << ',' << before.opcode
+				<< ',' << before.cycles << ',' << after.cycles << ',' << before.sr << ',' << after.sr
+				<< ',' << before.a << ',' << after.a << ',' << before.b << ',' << after.b
+				<< ',' << before.r3 << ',' << after.r3 << ',' << before.r4 << ',' << after.r4;
+			for(uint32_t i = 0; i < 3; ++i)
+				m_settleBlocksTrace << ',' << before.words[i] << ',' << after.words[i];
+			m_settleBlocksTrace << ',' << m_irqdCount << ',' << hdi08().rxData().size() << '\n';
+		}
 		const bool changed = before.words != after.words;
 		const auto pc = before.pc;
 		const bool nearby = m_watchStage == "note_on" &&
@@ -412,8 +477,16 @@ namespace g1
 	}
 #endif
 
-	void Dsp::runUntil(const uint64_t _cycles)
+	void Dsp::runUntil(const uint64_t _cycles, const RunCause _cause)
 	{
+#ifdef G1_DSP_TRACE
+		const auto cause = static_cast<size_t>(_cause);
+		if(m_settleTrace.is_open())
+		{
+			++m_settleCalls[cause];
+			m_settleActiveCause = static_cast<uint32_t>(_cause);
+		}
+#endif
 		while(m_booted && m_dsp.getCycles() < _cycles)
 		{
 			// `jmp $FF0000`: the program returns to the boot ROM.
@@ -428,6 +501,9 @@ namespace g1
 				if(it != m_pcWatch.end()) ++it->second;
 			}
 			const auto before = m_dsp.getCycles();
+#ifdef G1_DSP_TRACE
+			const auto blockPc = m_settleTrace.is_open() ? m_dsp.getPC().toWord() : 0;
+#endif
 			if(before >= m_nextIrqd)
 			{
 				// Fixed grid (not "now + period"): IRQD does not drift against the ESSI clock, which
@@ -461,6 +537,20 @@ namespace g1
 			if(static_cast<dsp56k::TWord>(m_dsp.regs().la.var) != m_lastLa && !m_noLaFix)
 				onLaChanged();
 			const auto now = m_dsp.getCycles();
+#ifdef G1_DSP_TRACE
+			if(m_settleTrace.is_open())
+			{
+				const auto delta = now - before;
+				m_settleCycles[cause] += delta;
+				++m_settleBlocks;
+				++m_settlePcs[blockPc];
+				if(delta > m_settleMaxBlockCycles)
+				{
+					m_settleMaxBlockCycles = delta;
+					m_settleMaxBlockPc = blockPc;
+				}
+			}
+#endif
 			if(now == before)	// DSP stopped (WAIT/STOP or halted): do not insist
 			{
 				++m_stalls;
@@ -668,7 +758,7 @@ namespace g1
 		// HRX holds a single word: if the previous one is still there, let the DSP run.
 		const auto stop = m_dsp.getCycles() + g_waitClamp;
 		while(hdi08().hasRXData() && m_booted && m_dsp.getCycles() < stop)
-			runUntil(m_dsp.getCycles() + 64);
+			runUntil(m_dsp.getCycles() + 64, RunCause::HostWord);
 		// If meanwhile the program went back to the boot ROM, the word belongs to it.
 		if(!m_booted)
 		{
@@ -695,7 +785,7 @@ namespace g1
 		// (32 entries) fills up and injectExternalInterrupt waits forever.
 		const auto stop = m_dsp.getCycles() + g_waitClamp;
 		while(m_dsp.hasPendingInterrupts() && m_booted && m_dsp.getCycles() < stop)
-			runUntil(m_dsp.getCycles() + 16);
+			runUntil(m_dsp.getCycles() + 16, RunCause::HostCommand);
 		if(m_dsp.hasPendingInterrupts())
 			return;	// the DSP does not service them (stopped): better to lose the command than hang
 		hdi08().writeHostCommand(_vector);
@@ -714,7 +804,7 @@ namespace g1
 		{
 			const auto stop = m_dsp.getCycles() + g_isrWaitClamp;
 			while(hdi08().hasRXData() && m_booted && m_dsp.getCycles() < stop)
-				runUntil(m_dsp.getCycles() + 64);
+				runUntil(m_dsp.getCycles() + 64, RunCause::ReadIsr);
 		}
 		transferToHost();
 		_isr = static_cast<uint8_t>((_isr & ~mc68k::Hdi08::Rxdf) | (m_hdiUc.canReceiveData() ? 0 : mc68k::Hdi08::Rxdf));

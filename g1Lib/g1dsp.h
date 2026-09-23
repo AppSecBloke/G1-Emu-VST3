@@ -17,6 +17,7 @@
 #include "dsp56kEmu/peripherals.h"
 
 #include <cstdint>
+#include <cstddef>
 #include <array>
 #include <functional>
 #include <deque>
@@ -56,6 +57,8 @@ namespace g1
 		bool armDiagnosticTrace(const char* _path, uint32_t _entryPc, uint32_t _steps);
 		bool armStartupWatch(const char* _path);
 		void startupCheckpoint(const char* _stage);
+		bool armSettleTrace(const char* _path);
+		void settleSample(uint64_t _ucCycles);
 #endif
 		uint64_t hostCommands() const { return m_hostCommands; }
 		uint64_t wordsToHost() const { return m_wordsToHost; }
@@ -109,7 +112,8 @@ namespace g1
 		void hostCommand(uint8_t _vector);
 		uint8_t readIsr(uint8_t _isr);
 		bool transferToHost();
-		void runUntil(uint64_t _cycles);
+		enum class RunCause : uint32_t { CatchUp, HostWord, HostCommand, ReadIsr, RxEmpty, Count };
+		void runUntil(uint64_t _cycles, RunCause _cause = RunCause::CatchUp);
 #ifdef G1_DSP_TRACE
 		void traceExec();
 		struct WatchSnapshot
@@ -160,6 +164,14 @@ namespace g1
 		uint32_t m_traceEntry = 0, m_traceRemaining = 0, m_traceStep = 0;
 		bool m_traceStarted = false;
 		std::ofstream m_startupWatch;
+		std::ofstream m_settleTrace;
+		std::ofstream m_settleBlocksTrace;
+		std::array<uint64_t, static_cast<size_t>(RunCause::Count)> m_settleCalls{}, m_settleCycles{};
+		std::map<uint32_t, uint64_t> m_settlePcs;
+		uint64_t m_settleBlocks = 0, m_settleMaxBlockCycles = 0;
+		uint32_t m_settleMaxBlockPc = 0;
+		int32_t m_settleSampleIndex = -1;
+		uint32_t m_settleFocusMs = 0, m_settleLoggedBlocks = 0, m_settleActiveCause = 0;
 		std::array<dsp56k::TWord, 3> m_watchLast{};
 		std::string m_watchStage = "upload";
 		uint64_t m_watchCall = 0;

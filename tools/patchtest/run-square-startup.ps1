@@ -1,6 +1,8 @@
 param(
     [Parameter(Mandatory = $true)][string]$RomPath,
-    [string]$OutputDirectory = (Join-Path (Get-Location).Path ('square-startup-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
+    [string]$OutputDirectory = (Join-Path (Get-Location).Path ('square-startup-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))),
+    [switch]$SettleTrace,
+    [ValidateRange(0,299)][int]$FocusMs = 0
 )
 
 Set-StrictMode -Version Latest
@@ -16,9 +18,13 @@ foreach ($path in @($RomPath, $exe, $modules, $fixture, $buildInfoPath)) {
     }
 }
 $info = Get-Content -LiteralPath $buildInfoPath -Raw | ConvertFrom-Json
-if ($info.buildId -notlike 'CMPM-build8-squarestartup-*' -or
+if (($info.buildId -notlike 'CMPM-build8-squarestartup-*' -and
+     $info.buildId -notlike 'CMPM-build8-squaresettle-*') -or
     $info.executableSha256 -ne (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash) {
     throw 'This bundle is not the matching CMPM-corrected Square startup executable.'
+}
+if ($SettleTrace -and $info.buildId -notlike 'CMPM-build8-squaresettle-*') {
+    throw 'The post-upload settling trace requires a squaresettle diagnostic build.'
 }
 if ((Get-Item -LiteralPath $RomPath).Length -ne 524288) {
     throw 'The G1 ROM must be exactly 524288 bytes.'
@@ -38,13 +44,15 @@ $square = Join-Path $output 'WobbleVoice-2Osc-4Voice-OSC1-Square.pch'
 $source.Replace($old, '2 7 10 64 64 64 64 3 0 0 0 0 0') |
     Set-Content -LiteralPath $square -Encoding Ascii -NoNewline
 
-$names = @('G1_MIDINOTE', 'G1_DSP_STARTUP_WATCH_FILE', 'G1_DSP_WATCH_BLOCKSIZE',
+$names = @('G1_MIDINOTE', 'G1_DSP_STARTUP_WATCH_FILE', 'G1_DSP_SETTLE_FILE',
+           'G1_DSP_SETTLE_FOCUS_MS', 'G1_DSP_WATCH_BLOCKSIZE',
            'G1_DSP_TRACE', 'G1_DSP_TRACE_FILE', 'G1_DSP_TRACE_START',
            'G1_DSP_TRACE_STEPS', 'G1_DUMP', 'G1_INTERP', 'G1_NO_LA_FIX',
            'G1_KNOBS', 'G1_PREPRESS', 'G1_PRESS', 'G1_HOLD', 'G1_HOLD_END', 'G1_DIAL')
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 $allCheckpoints = @()
+$settleByCase = @{}
 try {
     foreach ($name in $names) {
         Remove-Item -LiteralPath ('Env:' + $name) -ErrorAction SilentlyContinue
@@ -60,6 +68,10 @@ try {
         $watch = Join-Path $caseDir 'dsp0-startup.csv'
         $env:G1_MIDINOTE = '1'
         $env:G1_DSP_STARTUP_WATCH_FILE = $watch
+        if ($SettleTrace) {
+            $env:G1_DSP_SETTLE_FILE = Join-Path $caseDir 'dsp0-settle.csv'
+            $env:G1_DSP_SETTLE_FOCUS_MS = [string]$FocusMs
+        }
         $env:G1_DUMP = $dumpDir
         Remove-Item -LiteralPath Env:G1_DSP_WATCH_BLOCKSIZE -ErrorAction SilentlyContinue
         if ($case.BlockSize -eq 1) { $env:G1_DSP_WATCH_BLOCKSIZE = '1' }
@@ -76,6 +88,18 @@ try {
         }
         if ((Get-Item -LiteralPath $watch).Length -lt 200) {
             throw "$($case.Name) did not record startup checkpoints."
+        }
+        if ($SettleTrace -and ((Get-Item -LiteralPath $env:G1_DSP_SETTLE_FILE).Length -lt 1000)) {
+            throw "$($case.Name) did not record post-upload settling samples."
+        }
+        if ($SettleTrace -and ((Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + '.blocks.csv')).Length -lt 1000)) {
+            throw "$($case.Name) did not record focused DSP0 blocks."
+        }
+        if ($SettleTrace) {
+            $settleByCase[$case.Name] = @(Import-Csv -LiteralPath $env:G1_DSP_SETTLE_FILE)
+            if ($settleByCase[$case.Name].Count -lt 300) {
+                throw "$($case.Name) has too few post-upload millisecond samples."
+            }
         }
         $checkpoints = @(Import-Csv -LiteralPath $watch | Where-Object kind -eq 'checkpoint')
         $expected = @('before_upload', 'upload_packet_1', 'after_packet_1',
@@ -114,6 +138,36 @@ finally {
 }
 
 $allCheckpoints | Export-Csv -LiteralPath (Join-Path $output 'checkpoint-comparison.csv') -NoTypeInformation -Encoding Ascii
+if ($SettleTrace) {
+    $comparison = for ($i = 1; $i -lt 300; $i++) {
+        $deltas = @{}
+        foreach ($name in @('Saw-32', 'Square-32', 'Square-1-reference')) {
+            $rows = $settleByCase[$name]
+            $deltas[$name] = [long]$rows[$i].dsp_cycles - [long]$rows[$i - 1].dsp_cycles
+        }
+        $square = $settleByCase['Square-32'][$i]
+        [pscustomobject]@{
+            millisecond = $i
+            saw32_cycles = $deltas['Saw-32']
+            square32_cycles = $deltas['Square-32']
+            square1_cycles = $deltas['Square-1-reference']
+            square32_excess_over_both = $deltas['Square-32'] - [Math]::Max($deltas['Saw-32'], $deltas['Square-1-reference'])
+            square32_pc = $square.pc
+            square32_top_pc = $square.top_pc
+            square32_top_pc_blocks = $square.top_pc_blocks
+            square32_catchup_cycles = $square.catchup_cycles
+            square32_hostword_cycles = $square.hostword_cycles
+            square32_hostcommand_cycles = $square.hostcommand_cycles
+            square32_readisr_cycles = $square.readisr_cycles
+            square32_rxempty_cycles = $square.rxempty_cycles
+        }
+    }
+    $comparison | Export-Csv -LiteralPath (Join-Path $output 'settle-comparison.csv') -NoTypeInformation -Encoding Ascii
+    $firstExcess = $comparison | Where-Object { $_.square32_excess_over_both -gt 10000 } | Select-Object -First 1
+    if ($null -ne $firstExcess) {
+        $firstExcess | Format-List | Out-String | Set-Content -LiteralPath (Join-Path $output 'first-excess.txt') -Encoding Ascii
+    }
+}
 [ordered]@{
     buildId = $info.buildId
     executableSha256 = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
@@ -122,6 +176,8 @@ $allCheckpoints | Export-Csv -LiteralPath (Join-Path $output 'checkpoint-compari
     squarePatchSha256 = (Get-FileHash -LiteralPath $square -Algorithm SHA256).Hash
     failingDsp0MaxInstructionsPerBlock = 32
     referenceDsp0MaxInstructionsPerBlock = 1
+    settleTrace = [bool]$SettleTrace
+    focusMs = $FocusMs
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'startup-info.json') -Encoding UTF8
 $zip = "$output.zip"
 Compress-Archive -Path (Join-Path $output '*') -DestinationPath $zip
