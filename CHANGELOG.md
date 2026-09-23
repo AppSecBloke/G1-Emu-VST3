@@ -7,6 +7,14 @@ Older entries cite their commit by hand.
 
 ## 2026-09-23
 
+- **DSP0 Square startup watch (Codex; local change, not committed).** Added a
+  diagnostic-only watch for `X:$1D–$1F` across patch upload, DSP loading and note-on,
+  logging changed 32-instruction JIT blocks with register context and stage checkpoints.
+  Packaged a local-ROM runner for Saw-32, Square-32 and an explicitly selected Square-1
+  reference, with audio acceptance checks and separate outputs. The normal failing run
+  retains its 32-instruction block limit. Verification: source and diff review plus
+  PowerShell syntax checks; CI compilation and ROM-backed comparison remain pending.
+
 - **Normal-block DSP0 Square diagnostic (Codex; local change, not committed).**
   Kept DSP0's normal 32-instruction JIT block limit in the diagnostic build and
   changed the bounded trace to record pre/post state at normal JIT call boundaries.

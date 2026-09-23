@@ -22,6 +22,7 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 #ifdef G1_DSP_TRACE
 #include <fstream>
@@ -53,6 +54,8 @@ namespace g1
 		std::map<uint32_t, uint64_t>& pcWatch() { return m_pcWatch; }
 #ifdef G1_DSP_TRACE
 		bool armDiagnosticTrace(const char* _path, uint32_t _entryPc, uint32_t _steps);
+		bool armStartupWatch(const char* _path);
+		void startupCheckpoint(const char* _stage);
 #endif
 		uint64_t hostCommands() const { return m_hostCommands; }
 		uint64_t wordsToHost() const { return m_wordsToHost; }
@@ -109,6 +112,18 @@ namespace g1
 		void runUntil(uint64_t _cycles);
 #ifdef G1_DSP_TRACE
 		void traceExec();
+		struct WatchSnapshot
+		{
+			uint32_t pc = 0, opcode = 0, sr = 0;
+			uint32_t x0 = 0, x1 = 0, y0 = 0, y1 = 0, r3 = 0, r4 = 0;
+			uint64_t cycles = 0;
+			int64_t a = 0, b = 0;
+			std::array<dsp56k::TWord, 3> words{};
+		};
+		WatchSnapshot watchCapture();
+		void watchEmit(const char* _kind, const WatchSnapshot& _before, const WatchSnapshot& _after);
+		void watchExec();
+		void watchExternal(const char* _source);
 #endif
 		void drainAudio();
 		bool irqdEnabled();
@@ -144,6 +159,11 @@ namespace g1
 		std::ofstream m_trace, m_traceWrites;
 		uint32_t m_traceEntry = 0, m_traceRemaining = 0, m_traceStep = 0;
 		bool m_traceStarted = false;
+		std::ofstream m_startupWatch;
+		std::array<dsp56k::TWord, 3> m_watchLast{};
+		std::string m_watchStage = "upload";
+		uint64_t m_watchCall = 0;
+		uint32_t m_watchContextRemaining = 2048;
 #endif
 		Meter m_meter{};
 		AudioCallback m_audioCallback;

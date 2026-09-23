@@ -210,12 +210,26 @@ int main(int argc, char** argv)
 	}
 
 	// Upload, like NME: a packet, its reply, the next one.
+#ifdef G1_DSP_TRACE
+	if(const char* startupPath = std::getenv("G1_DSP_STARTUP_WATCH_FILE"))
+	{
+		if(std::getenv("G1_DSP_TRACE_FILE") || !mc.getDsp(0).armStartupWatch(startupPath))
+		{
+			std::fprintf(stderr, "Could not arm the DSP0 startup watch, or both trace modes were requested.\n");
+			return 2;
+		}
+	}
+#endif
 	int pid = -1;
 	// How long to wait for each packet's reply. The OS takes much longer at some points of a
 	// big patch (it is loading code into the DSPs), so G1_ACKMS raises it.
 	const uint32_t ackMs = std::getenv("G1_ACKMS") ? static_cast<uint32_t>(std::atoi(std::getenv("G1_ACKMS"))) : 300;
 	for(size_t i = 0; i < packets.size(); ++i)
 	{
+#ifdef G1_DSP_TRACE
+		const auto uploadStage = "upload_packet_" + std::to_string(i + 1);
+		mc.getDsp(0).startupCheckpoint(uploadStage.c_str());
+#endif
 		const auto msg = UploadPacketizer::frame(packets[i], i == 0, i + 1 == packets.size(), 0);
 		const auto before = mc.ucCycles();
 		const auto reply = transact(mc, msg, ackMs);
@@ -230,6 +244,10 @@ int main(int argc, char** argv)
 				pid = reply[k + 6];
 		if(reply.empty())
 			std::printf("  packet %zu/%zu: NO REPLY\n", i + 1, packets.size());
+#ifdef G1_DSP_TRACE
+		const auto stage = "after_packet_" + std::to_string(i + 1);
+		mc.getDsp(0).startupCheckpoint(stage.c_str());
+#endif
 	}
 	std::printf("patch \"%s\" uploaded in %zu packets; pid=%d\n", patch->getName().toRawUTF8(), packets.size(), pid);
 	if(pid < 0)
@@ -238,6 +256,9 @@ int main(int argc, char** argv)
 		return 1;
 	}
 	run(mc, 300 * g_ms);	// let the OS load the DSPs
+#ifdef G1_DSP_TRACE
+	mc.getDsp(0).startupCheckpoint("after_dsp_load");
+#endif
 
 	// Knob assignments, as NME does after uploading: those in the .pch and, with
 	// G1_KNOBS="knob:module:param,...", others (knob 0-17 = 1-18, poly section).
@@ -339,6 +360,9 @@ int main(int argc, char** argv)
 	}
 	blocks.clear();
 	capture = true;
+#ifdef G1_DSP_TRACE
+	mc.getDsp(0).startupCheckpoint("before_note");
+#endif
 	// Note through the PC Port, like NME: cc $17, 56 00 note (press) ... 56 01 note (release).
 	// G1_MIDINOTE=channel (1-16) plays it through the MIDI IN port instead, which is not the
 	// same road: the editor's note goes straight to the slot, MIDI IN goes through the OS's
@@ -374,6 +398,9 @@ int main(int argc, char** argv)
 		const auto on = withChecksum({0xf0, 0x33, 0x5c, 0x06, static_cast<uint8_t>(pid), 0x56, 0x00, static_cast<uint8_t>(note)});
 		mc.getPcPort().receive(on);
 	}
+#ifdef G1_DSP_TRACE
+	mc.getDsp(0).startupCheckpoint("note_on");
+#endif
 	const auto captureMs = static_cast<uint64_t>(seconds * 1000);
 #ifdef G1_DSP_TRACE
 	if(const char* tracePath = std::getenv("G1_DSP_TRACE_FILE"))
@@ -401,6 +428,9 @@ int main(int argc, char** argv)
 	else
 #endif
 		run(mc, captureMs * g_ms);
+#ifdef G1_DSP_TRACE
+	mc.getDsp(0).startupCheckpoint("capture_end");
+#endif
 	capture = false;
 	std::vector<uint8_t> rest;
 	mc.getPcPort().takeTx(rest);

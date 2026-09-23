@@ -76,6 +76,12 @@ namespace g1
 		config.dynamicPeripheralAddressing = false;
 		config.dynamicFastInterrupts = true;
 		config.maxInstructionsPerBlock = 32;
+#ifdef G1_DSP_TRACE
+		// Reference run only. The failing diagnostic always uses the normal 32.
+		if(_index == 0 && std::getenv("G1_DSP_WATCH_BLOCKSIZE") &&
+			std::string(std::getenv("G1_DSP_WATCH_BLOCKSIZE")) == "1")
+			config.maxInstructionsPerBlock = 1;
+#endif
 		config.maxDoIterations = 1;
 		m_dsp.getJit().setConfig(config);
 
@@ -188,6 +194,9 @@ namespace g1
 				onBootFinished();
 			else if(m_booted)
 				hostWord(_word);
+#ifdef G1_DSP_TRACE
+			watchExternal("boot_word");
+#endif
 		});
 		for(const auto w : pending)
 		{
@@ -195,6 +204,9 @@ namespace g1
 				hostWord(w);
 			else if(m_boot->hdiWriteTX(w))
 				onBootFinished();
+#ifdef G1_DSP_TRACE
+			watchExternal("pending_boot_word");
+#endif
 		}
 	}
 
@@ -206,6 +218,108 @@ namespace g1
 	}
 
 #ifdef G1_DSP_TRACE
+	Dsp::WatchSnapshot Dsp::watchCapture()
+	{
+		WatchSnapshot s;
+		s.pc = m_dsp.getPC().toWord();
+		s.opcode = s.pc < m_memory.sizeP() ? m_memory.get(dsp56k::MemArea_P, s.pc) : 0;
+		s.cycles = m_dsp.getCycles();
+		s.a = m_dsp.regs().a.var; s.b = m_dsp.regs().b.var;
+		s.x0 = m_dsp.x0().toWord(); s.x1 = m_dsp.x1().toWord();
+		s.y0 = m_dsp.y0().toWord(); s.y1 = m_dsp.y1().toWord();
+		s.r3 = m_dsp.regs().r[3].var; s.r4 = m_dsp.regs().r[4].var;
+		s.sr = m_dsp.getSR().toWord();
+		for(uint32_t i = 0; i < 3; ++i)
+			s.words[i] = m_memory.get(dsp56k::MemArea_X, 0x1d + i);
+		return s;
+	}
+
+	void Dsp::watchEmit(const char* _kind, const WatchSnapshot& _before, const WatchSnapshot& _after)
+	{
+		m_startupWatch << _kind << ',' << m_watchStage << ',' << m_watchCall
+			<< ',' << _before.pc << ',' << _after.pc << ',' << _before.opcode
+			<< ',' << _before.cycles << ',' << _after.cycles;
+		for(const auto w : _before.words) m_startupWatch << ',' << w;
+		for(const auto w : _after.words) m_startupWatch << ',' << w;
+		m_startupWatch << ',' << _before.a << ',' << _after.a
+			<< ',' << _before.b << ',' << _after.b
+			<< ',' << _before.x0 << ',' << _after.x0
+			<< ',' << _before.x1 << ',' << _after.x1
+			<< ',' << _before.y0 << ',' << _after.y0
+			<< ',' << _before.y1 << ',' << _after.y1
+			<< ',' << _before.r3 << ',' << _after.r3
+			<< ',' << _before.r4 << ',' << _after.r4
+			<< ',' << _before.sr << ',' << _after.sr << '\n';
+	}
+
+	bool Dsp::armStartupWatch(const char* _path)
+	{
+		if(m_index != 0 || !_path || !_path[0] || m_startupWatch.is_open())
+			return false;
+		m_startupWatch.open(_path, std::ios::out | std::ios::trunc);
+		if(!m_startupWatch)
+			return false;
+		m_startupWatch << "kind,stage,call,pre_pc,post_pc,pre_opcode,pre_cycles,post_cycles,"
+			"pre_x1d,pre_x1e,pre_x1f,post_x1d,post_x1e,post_x1f,"
+			"pre_a,post_a,pre_b,post_b,pre_x0,post_x0,pre_x1,post_x1,"
+			"pre_y0,post_y0,pre_y1,post_y1,pre_r3,post_r3,pre_r4,post_r4,pre_sr,post_sr\n";
+		m_watchCall = 0;
+		m_watchContextRemaining = 2048;
+		m_watchStage = "before_upload";
+		const auto s = watchCapture();
+		m_watchLast = s.words;
+		watchEmit("checkpoint", s, s);
+		return true;
+	}
+
+	void Dsp::watchExternal(const char* _source)
+	{
+		if(!m_startupWatch.is_open())
+			return;
+		std::array<dsp56k::TWord, 3> current{};
+		for(uint32_t i = 0; i < current.size(); ++i)
+			current[i] = m_memory.get(dsp56k::MemArea_X, 0x1d + i);
+		if(current != m_watchLast)
+		{
+			const auto after = watchCapture();
+			auto before = after;
+			before.words = m_watchLast;
+			watchEmit(_source, before, after);
+			m_watchLast = after.words;
+		}
+	}
+
+	void Dsp::startupCheckpoint(const char* _stage)
+	{
+		if(!m_startupWatch.is_open())
+			return;
+		watchExternal("between_calls");
+		m_watchStage = _stage;
+		const auto s = watchCapture();
+		watchEmit("checkpoint", s, s);
+		m_startupWatch.flush();
+	}
+
+	void Dsp::watchExec()
+	{
+		watchExternal("between_calls");
+		const auto before = watchCapture();
+		m_dsp.exec();
+		const auto after = watchCapture();
+		++m_watchCall;
+		const bool changed = before.words != after.words;
+		const auto pc = before.pc;
+		const bool nearby = m_watchStage == "note_on" &&
+			((pc >= 0x200 && pc <= 0x250) || (pc >= 0x3b7 && pc <= 0x43d) ||
+			 (pc >= 0x650 && pc <= 0x680));
+		if(changed || (nearby && m_watchContextRemaining))
+		{
+			watchEmit(changed ? "changed_in_block" : "note_context", before, after);
+			if(!changed && nearby) --m_watchContextRemaining;
+		}
+		m_watchLast = after.words;
+	}
+
 	bool Dsp::armDiagnosticTrace(const char* _path, const uint32_t _entryPc, const uint32_t _steps)
 	{
 		if(m_index != 0 || !_path || !_path[0] || !_steps)
@@ -337,7 +451,9 @@ namespace g1
 				m_dsp.execInterpreter();
 			else
 #ifdef G1_DSP_TRACE
-			if(m_index == 0 && m_traceRemaining)
+			if(m_index == 0 && m_startupWatch.is_open())
+				watchExec();
+			else if(m_index == 0 && m_traceRemaining)
 				traceExec();
 			else
 #endif
@@ -558,10 +674,16 @@ namespace g1
 		{
 			if(m_boot->hdiWriteTX(_word))
 				onBootFinished();
+#ifdef G1_DSP_TRACE
+			watchExternal("host_boot_word");
+#endif
 			return;
 		}
 		hdi08().writeRX(&_word, 1);
 		++m_hostWords;
+#ifdef G1_DSP_TRACE
+		watchExternal("host_word");
+#endif
 	}
 
 	void Dsp::hostCommand(const uint8_t _vector)

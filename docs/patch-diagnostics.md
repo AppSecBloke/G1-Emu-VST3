@@ -97,6 +97,33 @@ normal JIT call, which may execute multiple instructions. DSP0 retains the norma
 has not masked the Square failure. Disassemble the block-entry PCs and compare memory writes
 to narrow a suspect block before attributing a result to a particular instruction.
 
+## DSP0 Square startup watch (diagnostic build only)
+
+The newer manual diagnostic bundle also includes `run-square-startup.ps1`. Run it from the
+downloaded bundle with your local ROM:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run-square-startup.ps1 -RomPath 'D:\path\to\NORD-MODULAR-RACK-VER-3.03.BIN'
+```
+
+It runs the stored Saw patch with normal 32-instruction DSP0 JIT blocks, the generated
+stored-Square patch with the same normal setting, and an explicitly selected Square
+one-instruction-block reference. Each run starts from a fresh machine. The runner requires
+Saw and the reference Square to produce audio and normal-block Square to remain silent.
+It creates a dated `square-startup-*.zip` containing per-case audio logs, P/X/Y dumps,
+`dsp0-startup.csv`, per-case checkpoint summaries, `checkpoint-comparison.csv` and
+build/ROM hashes. No ROM is copied into it.
+
+The watch starts before the first patch upload packet. It records `X:$1D–$1F` after each
+DSP0 JIT call, at boot/host handoffs and at upload, DSP-load and note checkpoints. Rows
+with changed watched words include the pre/post PC, cycles and selected registers;
+up to 2048 note-stage blocks near the oscillator, `$023F` consumer and output path are
+also recorded. The failing run always keeps `maxInstructionsPerBlock = 32`. A change
+within a 32-instruction block is attributable to that block, not necessarily to one
+instruction; an intermediate write that is reversed inside the same block is not visible
+to this probe. The one-instruction reference helps narrow such a block without changing
+the failing run.
+
 ## Overlapping-note capture
 
 The same bundle can capture two overlapping notes through the G1 MIDI IN path. Run this
