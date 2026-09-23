@@ -7,6 +7,19 @@ Older entries cite their commit by hand.
 
 ## 2026-09-23
 
+- **Two-oscillator four-voice test patch (Codex; local change, not committed).**
+  Added `WobbleVoice-2Osc-4Voice.pch` with a second OscA and a Nord Mixer (3)
+  before the existing FilterD/ADSR/stereo path; OSC2 starts at fine 66 versus
+  OSC1 fine 64. Kept the four-voice header and the existing gate, velocity and
+  LFO connections. Packaged the fixture in the Windows and diagnostic artifacts.
+  Verification: the CMPM-corrected ROM-backed g1patchtest uploaded it and the
+  Nord display reported `( 4)` with stereo audio. Muting either mixer input in
+  temporary copies left the other oscillator audible at about 261 Hz. With LFO
+  depth set to zero for analysis, the detuned pair showed a moving RMS envelope
+  while the same-pitch pair stayed nearly steady. Generic UI discovery of 44
+  ordinary parameters follows from the metadata; Gig Performer remains to verify
+  live controls, beating and four-voice playability.
+
 - **Four-voice Wobble fixture and overlap probe (Codex; local change, not committed).**
   Added `WobbleVoice-4Voice.pch`, differing from the mono fixture by only the
   requested-voices header byte (1 to 4), and packaged it with the Windows VST

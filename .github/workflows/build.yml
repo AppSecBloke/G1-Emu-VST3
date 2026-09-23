@@ -62,7 +62,7 @@ jobs:
           Copy-Item build/app/Release/g1run.exe package/
           Copy-Item build/app/gui/g1gui_artefacts/Release/G1-Emu.exe package/
           Copy-Item -Recurse build/plugin/g1vst3_artefacts/Release/VST3/G1-Emu.vst3 package/
-          Copy-Item G1-Emu/README.md, G1-Emu/LICENSE, G1-Emu/WobbleVoice.pch, G1-Emu/WobbleVoice-4Voice.pch package/
+          Copy-Item G1-Emu/README.md, G1-Emu/LICENSE, G1-Emu/WobbleVoice.pch, G1-Emu/WobbleVoice-4Voice.pch, G1-Emu/WobbleVoice-2Osc-4Voice.pch package/
 
       - uses: actions/upload-artifact@v4
         with:

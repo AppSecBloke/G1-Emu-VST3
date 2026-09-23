@@ -74,6 +74,7 @@ jobs:
           Copy-Item G1-Emu/tools/patchtest/run-matched.ps1 diagnostic-bundle/
           Copy-Item G1-Emu/SimpleOSC.pch diagnostic-bundle/
           Copy-Item G1-Emu/WobbleVoice-4Voice.pch diagnostic-bundle/
+          Copy-Item G1-Emu/WobbleVoice-2Osc-4Voice.pch diagnostic-bundle/
           Copy-Item Animatek-NME/data/modules.xml diagnostic-bundle/
           Copy-Item G1-Emu/docs/patch-diagnostics.md diagnostic-bundle/README.md
           Copy-Item G1-Emu/LICENSE diagnostic-bundle/
