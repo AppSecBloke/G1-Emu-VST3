@@ -26,4 +26,7 @@ target_include_directories(g1patchtest PRIVATE ${NME_DIR}/source)
 target_compile_definitions(g1patchtest PRIVATE
 	NME_DATA_DIR="${NME_DIR}/data"
 	JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_MODAL_LOOPS_PERMITTED=1)
+if(MSVC)
+	target_compile_definitions(g1patchtest PRIVATE _USE_MATH_DEFINES)
+endif()
 target_link_libraries(g1patchtest PRIVATE g1Lib juce::juce_core juce::juce_events juce::juce_data_structures juce::juce_graphics)

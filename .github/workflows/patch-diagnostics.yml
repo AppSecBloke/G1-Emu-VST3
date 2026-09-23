@@ -1,0 +1,111 @@
+name: Build patch diagnostic tools
+
+on:
+  workflow_dispatch:
+    inputs:
+      nme_ref:
+        description: 'NME commit/ref (use the tested VST3 revision when known)'
+        required: true
+        default: '94874fc726df80ae2c096e1db22df41afc566c5e'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic-tools:
+    name: Windows x64 diagnostic bundle (no ROM)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: G1-Emu
+      - uses: actions/checkout@v4
+        with:
+          repository: joelanders/gearmulator-md-mm
+          ref: mdmm-v0.1.0-alpha.13
+          path: gearmulator-md-mm
+          submodules: recursive
+      - uses: actions/checkout@v4
+        with:
+          repository: juce-framework/JUCE
+          ref: 8.0.12
+          path: JUCE
+      - uses: actions/checkout@v4
+        with:
+          repository: animatek/Animatek-NME
+          ref: ${{ inputs.nme_ref }}
+          path: Animatek-NME
+          submodules: false
+
+      - name: Configure separate diagnostic build
+        run: >
+          cmake -B diagnostic-build -S G1-Emu -A x64
+          -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          -DGEARMULATOR_DIR="${{ github.workspace }}/gearmulator-md-mm"
+          -DG1_JUCE_DIR="${{ github.workspace }}/JUCE"
+          -DNME_DIR="${{ github.workspace }}/Animatek-NME"
+          -DG1_BACKEND=juce
+
+      - name: Build tools only
+        run: cmake --build diagnostic-build --config Release --parallel --target g1patchtest dspdis g1dspcheck
+
+      - name: Check DSP extensions without a ROM
+        run: ctest --test-dir diagnostic-build -C Release -L g1 --output-on-failure
+
+      - name: Assemble portable diagnostic bundle
+        run: |
+          New-Item -ItemType Directory -Path diagnostic-bundle | Out-Null
+          Copy-Item diagnostic-build/tools/patchtest/g1patchtest_artefacts/Release/g1patchtest.exe diagnostic-bundle/
+          Copy-Item diagnostic-build/tools/Release/dspdis.exe diagnostic-bundle/
+          Copy-Item G1-Emu/tools/patchtest/run-matched.ps1 diagnostic-bundle/
+          Copy-Item G1-Emu/SimpleOSC.pch diagnostic-bundle/
+          Copy-Item Animatek-NME/data/modules.xml diagnostic-bundle/
+          Copy-Item G1-Emu/docs/patch-diagnostics.md diagnostic-bundle/README.md
+          Copy-Item G1-Emu/LICENSE diagnostic-bundle/
+          $info = [ordered]@{
+            g1 = (git -C G1-Emu rev-parse HEAD)
+            gearmulator = (git -C gearmulator-md-mm rev-parse HEAD)
+            dsp56300 = (git -C gearmulator-md-mm/source/dsp56300 rev-parse HEAD)
+            mc68k = (git -C gearmulator-md-mm/source/mc68k rev-parse HEAD)
+            juce = (git -C JUCE rev-parse HEAD)
+            nme = (git -C Animatek-NME rev-parse HEAD)
+            submodules = @(git -C gearmulator-md-mm submodule status --recursive)
+            configuration = 'Release, x64, static MSVC runtime, existing G1 core patches'
+            runnerImage = $env:ImageVersion
+            runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+            executableSha256 = (Get-FileHash diagnostic-bundle/g1patchtest.exe -Algorithm SHA256).Hash
+            cmake = (cmake --version | Select-Object -First 1)
+          }
+          $info | ConvertTo-Json -Depth 5 | Set-Content diagnostic-bundle/build-info.json -Encoding UTF8
+
+      - name: Verify bundle launch and matched fixture generation
+        run: |
+          & ./diagnostic-bundle/g1patchtest.exe 2> usage.txt
+          if ($LASTEXITCODE -ne 2) { throw 'The diagnostic executable did not reach its usage check.' }
+          ./diagnostic-bundle/run-matched.ps1 -PrepareOnly -OutputDirectory "$env:RUNNER_TEMP/patch-preflight"
+          # The expected usage exit above must not become this step's exit status.
+          $global:LASTEXITCODE = 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: G1-patch-diagnostics-windows-x64
+          path: diagnostic-bundle/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Preserve failed build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: G1-patch-diagnostics-build-logs
+          path: |
+            diagnostic-build/CMakeFiles/CMakeConfigureLog.yaml
+            diagnostic-build/Testing/Temporary/LastTest.log
+            usage.txt
+          if-no-files-found: ignore
+          retention-days: 14

@@ -102,12 +102,13 @@ int main(int argc, char** argv)
 {
 	if(argc < 3)
 	{
-		std::fprintf(stderr, "usage: g1patchtest ROM patch.pch [--note N] [--seconds S] [--wav file.wav] [--input-sine Hz]\n");
+		std::fprintf(stderr, "usage: g1patchtest ROM patch.pch [--note N] [--seconds S] [--wav file.wav] [--input-sine Hz] [--modules modules.xml]\n");
 		return 2;
 	}
 	int note = 60;
 	double seconds = 2.0;
 	std::string wavPath;
+	std::string modulesPath;
 	double inputHz = 0;
 	for(int i = 3; i + 1 < argc; i += 2)
 	{
@@ -115,13 +116,17 @@ int main(int argc, char** argv)
 		else if(!std::strcmp(argv[i], "--seconds")) seconds = std::atof(argv[i + 1]);
 		else if(!std::strcmp(argv[i], "--wav")) wavPath = argv[i + 1];
 		else if(!std::strcmp(argv[i], "--input-sine")) inputHz = std::atof(argv[i + 1]);
+		else if(!std::strcmp(argv[i], "--modules")) modulesPath = argv[i + 1];
 	}
 
 	// The patch, with NME's module descriptions.
 	ModuleDescriptions descs;
-	if(!descs.loadFromFile(juce::File(NME_DATA_DIR).getChildFile("modules.xml")))
+	const auto modulesFile = modulesPath.empty()
+		? juce::File(NME_DATA_DIR).getChildFile("modules.xml")
+		: juce::File::getCurrentWorkingDirectory().getChildFile(juce::String(modulesPath));
+	if(!descs.loadFromFile(modulesFile))
 	{
-		std::fprintf(stderr, "cannot load %s/modules.xml\n", NME_DATA_DIR);
+		std::fprintf(stderr, "cannot load %s\n", modulesFile.getFullPathName().toRawUTF8());
 		return 1;
 	}
 	PchFileIO io(descs);

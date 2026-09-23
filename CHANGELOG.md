@@ -7,6 +7,21 @@ Older entries cite their commit by hand.
 
 ## 2026-09-23
 
+- **Manual matched-patch diagnostic bundle (Codex; local change, not committed).** Added
+  a separate Windows workflow that builds g1patchtest/dspdis, runs the ROM-free DSP checks
+  and packages a portable tool bundle with pinned/default dependency provenance. The local
+  PowerShell runner generates Saw by changing only SimpleOSC's waveform byte, uses the same
+  user-supplied ROM in fresh processes with identical MIDI/settings, and archives logs,
+  output/link measurements, WAVs and G1_DUMP captures, including partial failures. ROMs are
+  never uploaded or copied into results. Added a harness-only --modules option for the bundled
+  catalogue and the MSVC M_PI compile definition; production emulator/VST3 behaviour and the
+  existing build workflow are unchanged. Documented download/run steps and dump limitations.
+  Verification: PowerShell syntax and real preflight execution passed on PowerShell 7 and
+  Windows PowerShell 5.1; exact one-byte fixtures, overwrite refusal, and both-failing-child
+  log/ZIP preservation were checked with a harmless OS utility and synthetic wrapper input
+  (not an emulation test). Workflow/source reviewed; no installed YAML linter was available.
+  CI compilation and the actual ROM-backed matched experiment remain pending.
+
 - **Build #7 concurrency review fix (Codex; local change, not committed).** Found that
   overlapping host state restoration and UI load operations could each restore a different
   saved suspension flag, leaving audio permanently suspended. Replaced independent pause
