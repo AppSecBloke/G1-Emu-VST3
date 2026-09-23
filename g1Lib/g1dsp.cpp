@@ -143,6 +143,13 @@ namespace g1
 		{
 			++m_servicedVectors[_vba];
 			m_lastVector = _vba;
+#ifdef G1_DSP_TRACE
+			if(settleEventsActive())
+			{
+				const auto state = settleEventCapture();
+				settleEvent("interrupt_serviced", _vba, state, state);
+			}
+#endif
 		});
 
 		// HF0/HF1 flags from the CPU's ICR to the DSP's HSR.
@@ -310,19 +317,58 @@ namespace g1
 		m_settleBlocksTrace.open(std::string(_path) + ".blocks.csv", std::ios::out | std::ios::trunc);
 		if(!m_settleBlocksTrace)
 			return false;
+		m_settleEvents.open(std::string(_path) + ".events.csv", std::ios::out | std::ios::trunc);
+		if(!m_settleEvents)
+			return false;
 		if(const char* focus = std::getenv("G1_DSP_SETTLE_FOCUS_MS"))
 			m_settleFocusMs = static_cast<uint32_t>(std::strtoul(focus, nullptr, 10));
 		m_settleBlocksTrace << "ms,block,cause,pre_pc,post_pc,pre_opcode,pre_cycles,post_cycles,"
 			"pre_sr,post_sr,pre_a,post_a,pre_b,post_b,pre_r3,post_r3,pre_r4,post_r4,"
 			"pre_x1d,post_x1d,pre_x1e,post_x1e,pre_x1f,post_x1f,irqd_count,rx_depth\n";
-		m_settleTrace << "uc_cycles,dsp_cycles,pc,opcode,sr,la,irqd_count,next_irqd,host_words,host_commands,"
+		m_settleEvents << "ms,seq,kind,value,pre_pc,post_pc,pre_opcode,post_opcode,pre_cycles,post_cycles,"
+			"pre_sr,post_sr,pre_rx,post_rx,pre_pending,post_pending,pre_vector,post_vector,"
+			"host_words,host_commands\n";
+		m_settleTrace << "uc_cycles,cpu_host_accesses,dsp_cycles,pc,opcode,sr,la,irqd_count,next_irqd,host_words,host_commands,"
 			"rx_depth,pending_interrupts,x1d,x1e,x1f,blocks,top_pc,top_pc_blocks,max_block_pc,max_block_cycles,"
 			"catchup_calls,catchup_cycles,hostword_calls,hostword_cycles,hostcommand_calls,hostcommand_cycles,"
 			"readisr_calls,readisr_cycles,rxempty_calls,rxempty_cycles\n";
 		return true;
 	}
 
-	void Dsp::settleSample(const uint64_t _ucCycles)
+	bool Dsp::settleEventsActive() const
+	{
+		const auto focus = static_cast<int32_t>(m_settleFocusMs);
+		return m_settleEvents.is_open() && m_settleSampleIndex >= focus - 1 &&
+			m_settleSampleIndex <= focus + 2 && m_settleLoggedEvents < 20000;
+	}
+
+	Dsp::SettleEventSnapshot Dsp::settleEventCapture()
+	{
+		SettleEventSnapshot s;
+		s.pc = m_dsp.getPC().toWord();
+		s.opcode = s.pc < m_memory.sizeP() ? m_memory.get(dsp56k::MemArea_P, s.pc) : 0;
+		s.cycles = m_dsp.getCycles();
+		s.sr = m_dsp.getSR().toWord();
+		s.rxDepth = static_cast<uint32_t>(hdi08().rxData().size());
+		s.pending = m_dsp.hasPendingInterrupts();
+		s.lastVector = m_lastVector;
+		return s;
+	}
+
+	void Dsp::settleEvent(const char* _kind, const uint32_t _value,
+		const SettleEventSnapshot& _before, const SettleEventSnapshot& _after)
+	{
+		if(!settleEventsActive())
+			return;
+		m_settleEvents << m_settleSampleIndex << ',' << m_settleLoggedEvents++ << ',' << _kind << ','
+			<< _value << ',' << _before.pc << ',' << _after.pc << ',' << _before.opcode << ','
+			<< _after.opcode << ',' << _before.cycles << ',' << _after.cycles << ','
+			<< _before.sr << ',' << _after.sr << ',' << _before.rxDepth << ',' << _after.rxDepth
+			<< ',' << _before.pending << ',' << _after.pending << ',' << _before.lastVector
+			<< ',' << _after.lastVector << ',' << m_hostWords << ',' << m_hostCommands << '\n';
+	}
+
+	void Dsp::settleSample(const uint64_t _ucCycles, const uint64_t _cpuHostAccesses)
 	{
 		if(!m_settleTrace.is_open())
 			return;
@@ -331,7 +377,7 @@ namespace g1
 		for(const auto& [pc, count] : m_settlePcs)
 			if(count > topCount) { topPc = pc; topCount = count; }
 		const auto pc = m_dsp.getPC().toWord();
-		m_settleTrace << _ucCycles << ',' << m_dsp.getCycles() << ',' << pc << ','
+		m_settleTrace << _ucCycles << ',' << _cpuHostAccesses << ',' << m_dsp.getCycles() << ',' << pc << ','
 			<< (pc < m_memory.sizeP() ? m_memory.get(dsp56k::MemArea_P, pc) : 0) << ','
 			<< m_dsp.getSR().toWord() << ',' << m_dsp.regs().la.var << ',' << m_irqdCount << ','
 			<< m_nextIrqd << ',' << m_hostWords << ',' << m_hostCommands << ','
@@ -355,9 +401,17 @@ namespace g1
 	void Dsp::watchExec()
 	{
 		watchExternal("between_calls");
+		const bool trackHost = settleEventsActive();
+		const auto hostBefore = trackHost ? settleEventCapture() : SettleEventSnapshot{};
 		const auto before = watchCapture();
 		m_dsp.exec();
 		const auto after = watchCapture();
+		if(trackHost)
+		{
+			const auto hostAfter = settleEventCapture();
+			if(hostBefore.rxDepth != hostAfter.rxDepth)
+				settleEvent("dsp_block_rx_change", before.pc, hostBefore, hostAfter);
+		}
 		++m_watchCall;
 		if(m_settleBlocksTrace.is_open() &&
 			m_settleSampleIndex == static_cast<int32_t>(m_settleFocusMs) &&
@@ -755,10 +809,19 @@ namespace g1
 
 	void Dsp::hostWord(const uint32_t _word)
 	{
+#ifdef G1_DSP_TRACE
+		const bool traceHost = settleEventsActive();
+		const auto hostBefore = traceHost ? settleEventCapture() : SettleEventSnapshot{};
+#endif
 		// HRX holds a single word: if the previous one is still there, let the DSP run.
 		const auto stop = m_dsp.getCycles() + g_waitClamp;
 		while(hdi08().hasRXData() && m_booted && m_dsp.getCycles() < stop)
 			runUntil(m_dsp.getCycles() + 64, RunCause::HostWord);
+#ifdef G1_DSP_TRACE
+		const auto afterWait = traceHost ? settleEventCapture() : SettleEventSnapshot{};
+		if(traceHost)
+			settleEvent("host_word_wait", _word, hostBefore, afterWait);
+#endif
 		// If meanwhile the program went back to the boot ROM, the word belongs to it.
 		if(!m_booted)
 		{
@@ -772,6 +835,8 @@ namespace g1
 		hdi08().writeRX(&_word, 1);
 		++m_hostWords;
 #ifdef G1_DSP_TRACE
+		if(traceHost)
+			settleEvent("host_word_enqueued", _word, afterWait, settleEventCapture());
 		watchExternal("host_word");
 #endif
 	}
@@ -780,6 +845,10 @@ namespace g1
 	{
 		if(!m_booted)
 			return;
+#ifdef G1_DSP_TRACE
+		const bool traceHost = settleEventsActive();
+		const auto hostBefore = traceHost ? settleEventCapture() : SettleEventSnapshot{};
+#endif
 		// The real DSP services each host command as soon as it arrives. Here it is allowed to run
 		// until it has dispatched what is pending: otherwise the external interrupt queue
 		// (32 entries) fills up and injectExternalInterrupt waits forever.
@@ -787,14 +856,28 @@ namespace g1
 		while(m_dsp.hasPendingInterrupts() && m_booted && m_dsp.getCycles() < stop)
 			runUntil(m_dsp.getCycles() + 16, RunCause::HostCommand);
 		if(m_dsp.hasPendingInterrupts())
+		{
+#ifdef G1_DSP_TRACE
+			if(traceHost)
+				settleEvent("host_command_dropped", _vector, hostBefore, settleEventCapture());
+#endif
 			return;	// the DSP does not service them (stopped): better to lose the command than hang
+		}
 		hdi08().writeHostCommand(_vector);
 		++m_hostCommands;
+#ifdef G1_DSP_TRACE
+		if(traceHost)
+			settleEvent("host_command_written", _vector, hostBefore, settleEventCapture());
+#endif
 		transferToHost();
 	}
 
 	uint8_t Dsp::readIsr(uint8_t _isr)
 	{
+#ifdef G1_DSP_TRACE
+		const bool traceRx = settleEventsActive() && hdi08().hasRXData();
+		const auto hostBefore = traceRx ? settleEventCapture() : SettleEventSnapshot{};
+#endif
 		// On the hardware the DSP takes the incoming word at once; here it may lag. If the CPU
 		// polls with a word pending, the DSP runs until it takes it: the OS routine drops the word
 		// after 10 polls. Short wait: if the DSP is in a loop that does not read the port (for
@@ -820,6 +903,10 @@ namespace g1
 			_isr |= mc68k::Hdi08::Txde | mc68k::Hdi08::Trdy;
 		else if(depth == 1)
 			_isr |= mc68k::Hdi08::Txde;
+#ifdef G1_DSP_TRACE
+		if(traceRx)
+			settleEvent("read_isr", _isr, hostBefore, settleEventCapture());
+#endif
 		return _isr;
 	}
 

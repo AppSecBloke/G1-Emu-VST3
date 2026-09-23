@@ -266,15 +266,31 @@ int main(int argc, char** argv)
 		const auto start = mc.ucCycles();
 		const auto end = start + 300 * g_ms;
 		auto nextSample = start + g_ms;
-		mc.getDsp(0).settleSample(start);
+		mc.hostTrace().clear();	// only the post-upload CPU host-port accesses are relevant
+		mc.getDsp(0).settleSample(start, mc.hostTrace().size());
 		while(mc.ucCycles() < end)
 		{
 			mc.exec();
 			if(mc.ucCycles() >= nextSample)
 			{
-				mc.getDsp(0).settleSample(mc.ucCycles());
+				mc.getDsp(0).settleSample(mc.ucCycles(), mc.hostTrace().size());
 				nextSample += g_ms;
 			}
+		}
+		std::ofstream hostLog(std::string(settlePath) + ".cpu-host.csv", std::ios::out | std::ios::trunc);
+		if(!hostLog)
+		{
+			std::fprintf(stderr, "Could not write the post-upload CPU host-port trace.\n");
+			return 2;
+		}
+		hostLog << "seq,address,write,value,cpu_pc,size\n";
+		const auto& hostTrace = mc.hostTrace();
+		for(size_t i = 0; i < hostTrace.size(); ++i)
+		{
+			const auto& access = hostTrace[i];
+			if(access.addr >= g1::g_dspAddress && access.addr < g1::g_dspAddress + 8)
+				hostLog << i << ',' << access.addr << ',' << access.write << ','
+					<< access.value << ',' << access.pc << ',' << static_cast<uint32_t>(access.size) << '\n';
 		}
 	}
 	else

@@ -19,12 +19,13 @@ foreach ($path in @($RomPath, $exe, $modules, $fixture, $buildInfoPath)) {
 }
 $info = Get-Content -LiteralPath $buildInfoPath -Raw | ConvertFrom-Json
 if (($info.buildId -notlike 'CMPM-build8-squarestartup-*' -and
-     $info.buildId -notlike 'CMPM-build8-squaresettle-*') -or
+     $info.buildId -notlike 'CMPM-build8-squaresettle-*' -and
+     $info.buildId -notlike 'CMPM-build8-squarehost-*') -or
     $info.executableSha256 -ne (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash) {
     throw 'This bundle is not the matching CMPM-corrected Square startup executable.'
 }
-if ($SettleTrace -and $info.buildId -notlike 'CMPM-build8-squaresettle-*') {
-    throw 'The post-upload settling trace requires a squaresettle diagnostic build.'
+if ($SettleTrace -and $info.buildId -notlike 'CMPM-build8-squarehost-*') {
+    throw 'The host-port event trace requires a squarehost diagnostic build.'
 }
 if ((Get-Item -LiteralPath $RomPath).Length -ne 524288) {
     throw 'The G1 ROM must be exactly 524288 bytes.'
@@ -94,6 +95,13 @@ try {
         }
         if ($SettleTrace -and ((Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + '.blocks.csv')).Length -lt 1000)) {
             throw "$($case.Name) did not record focused DSP0 blocks."
+        }
+        if ($SettleTrace) {
+            foreach ($suffix in @('.events.csv', '.cpu-host.csv')) {
+                if ((Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + $suffix)).Length -lt 1000) {
+                    throw "$($case.Name) did not record $suffix host-port events."
+                }
+            }
         }
         if ($SettleTrace) {
             $settleByCase[$case.Name] = @(Import-Csv -LiteralPath $env:G1_DSP_SETTLE_FILE)

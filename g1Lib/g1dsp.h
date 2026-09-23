@@ -58,7 +58,7 @@ namespace g1
 		bool armStartupWatch(const char* _path);
 		void startupCheckpoint(const char* _stage);
 		bool armSettleTrace(const char* _path);
-		void settleSample(uint64_t _ucCycles);
+		void settleSample(uint64_t _ucCycles, uint64_t _cpuHostAccesses);
 #endif
 		uint64_t hostCommands() const { return m_hostCommands; }
 		uint64_t wordsToHost() const { return m_wordsToHost; }
@@ -128,6 +128,16 @@ namespace g1
 		void watchEmit(const char* _kind, const WatchSnapshot& _before, const WatchSnapshot& _after);
 		void watchExec();
 		void watchExternal(const char* _source);
+		struct SettleEventSnapshot
+		{
+			uint32_t pc = 0, opcode = 0, sr = 0, rxDepth = 0, lastVector = 0;
+			uint64_t cycles = 0;
+			bool pending = false;
+		};
+		bool settleEventsActive() const;
+		SettleEventSnapshot settleEventCapture();
+		void settleEvent(const char* _kind, uint32_t _value,
+			const SettleEventSnapshot& _before, const SettleEventSnapshot& _after);
 #endif
 		void drainAudio();
 		bool irqdEnabled();
@@ -166,12 +176,14 @@ namespace g1
 		std::ofstream m_startupWatch;
 		std::ofstream m_settleTrace;
 		std::ofstream m_settleBlocksTrace;
+		std::ofstream m_settleEvents;
 		std::array<uint64_t, static_cast<size_t>(RunCause::Count)> m_settleCalls{}, m_settleCycles{};
 		std::map<uint32_t, uint64_t> m_settlePcs;
 		uint64_t m_settleBlocks = 0, m_settleMaxBlockCycles = 0;
 		uint32_t m_settleMaxBlockPc = 0;
 		int32_t m_settleSampleIndex = -1;
 		uint32_t m_settleFocusMs = 0, m_settleLoggedBlocks = 0, m_settleActiveCause = 0;
+		uint32_t m_settleLoggedEvents = 0;
 		std::array<dsp56k::TWord, 3> m_watchLast{};
 		std::string m_watchStage = "upload";
 		uint64_t m_watchCall = 0;

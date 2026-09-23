@@ -143,6 +143,18 @@ rerun with `-SettleTrace -FocusMs N` to capture that millisecond instead. The
 runner still rejects any run in which the known Saw-audible, Square-silent,
 Square-reference-audible pattern changes. No ROM is packaged.
 
+The `squarehost` diagnostic build adds a host-port event window around `-FocusMs`.
+For the first persistent Square RX backlog, use `-SettleTrace -FocusMs 25`.
+`dsp0-settle.csv.events.csv` records each DSP0 host word, host command, relevant
+ISR read, interrupt service and JIT block that changes RX depth from one
+millisecond before the focus through two milliseconds after it. It includes the
+word/vector, pre/post PC, cycles, status, RX depth and pending-interrupt state.
+`dsp0-settle.csv.cpu-host.csv` lists the post-upload 68k accesses to DSP0's
+host-port registers with the CPU PC and value. The `cpu_host_accesses` column
+in `dsp0-settle.csv` maps those access sequence numbers to each millisecond.
+The event window and 20,000-block cap bound the output; if the decisive block
+falls in the next millisecond, rerun with `-FocusMs 26`.
+
 ## Overlapping-note capture
 
 The same bundle can capture two overlapping notes through the G1 MIDI IN path. Run this

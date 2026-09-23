@@ -7,6 +7,15 @@ Older entries cite their commit by hand.
 
 ## 2026-09-23
 
+- **DSP0 Square host-port first-event trace (Codex; local change, not committed).**
+  Added opt-in, bounded post-upload logging of the first queued DSP0 host word,
+  host-command and ISR waits, interrupt service, RX-depth-changing JIT blocks and
+  the matching 68k host-port access PCs. The matched runner now packages these
+  events around a chosen millisecond while retaining normal 32-instruction
+  Square execution and all three audio acceptance checks. Verification: source
+  and diff review plus PowerShell syntax and whitespace checks; the new CI build
+  and ROM-backed producer/consumer comparison remain pending. No JIT fix.
+
 - **DSP0 Square post-upload cycle probe (Codex; local change, not committed).** Added
   opt-in, diagnostic-build-only millisecond sampling and a bounded focused block trace
   for the 300 ms after patch upload. The probe separates ordinary catch-up from host

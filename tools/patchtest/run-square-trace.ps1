@@ -18,7 +18,9 @@ foreach ($path in @($RomPath, $exe, $modules, $fixture, $buildInfoPath)) {
 }
 $info = Get-Content -LiteralPath $buildInfoPath -Raw | ConvertFrom-Json
 if (($info.buildId -notlike 'CMPM-build8-squareblocktrace-*' -and
-     $info.buildId -notlike 'CMPM-build8-squarestartup-*') -or
+     $info.buildId -notlike 'CMPM-build8-squarestartup-*' -and
+     $info.buildId -notlike 'CMPM-build8-squaresettle-*' -and
+     $info.buildId -notlike 'CMPM-build8-squarehost-*') -or
     $info.executableSha256 -ne (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash) {
     throw 'This bundle is not the matching CMPM-corrected Square trace executable.'
 }
