@@ -102,10 +102,11 @@ int main(int argc, char** argv)
 {
 	if(argc < 3)
 	{
-		std::fprintf(stderr, "usage: g1patchtest ROM patch.pch [--note N] [--seconds S] [--wav file.wav] [--input-sine Hz] [--modules modules.xml]\n");
+		std::fprintf(stderr, "usage: g1patchtest ROM patch.pch [--note N] [--overlap-note N] [--seconds S] [--wav file.wav] [--input-sine Hz] [--modules modules.xml]\n");
 		return 2;
 	}
 	int note = 60;
+	int overlapNote = -1;
 	double seconds = 2.0;
 	std::string wavPath;
 	std::string modulesPath;
@@ -113,10 +114,16 @@ int main(int argc, char** argv)
 	for(int i = 3; i + 1 < argc; i += 2)
 	{
 		if(!std::strcmp(argv[i], "--note")) note = std::atoi(argv[i + 1]);
+		else if(!std::strcmp(argv[i], "--overlap-note")) overlapNote = std::atoi(argv[i + 1]);
 		else if(!std::strcmp(argv[i], "--seconds")) seconds = std::atof(argv[i + 1]);
 		else if(!std::strcmp(argv[i], "--wav")) wavPath = argv[i + 1];
 		else if(!std::strcmp(argv[i], "--input-sine")) inputHz = std::atof(argv[i + 1]);
 		else if(!std::strcmp(argv[i], "--modules")) modulesPath = argv[i + 1];
+	}
+	if(overlapNote >= 0 && (overlapNote > 127 || note < 0 || note > 127 || seconds < 0.01))
+	{
+		std::fprintf(stderr, "--overlap-note requires MIDI notes 0..127 and --seconds >= 0.01\n");
+		return 2;
 	}
 
 	// The patch, with NME's module descriptions.
@@ -335,7 +342,28 @@ int main(int argc, char** argv)
 	// G1_MIDINOTE=channel (1-16) plays it through the MIDI IN port instead, which is not the
 	// same road: the editor's note goes straight to the slot, MIDI IN goes through the OS's
 	// keyboard handling (channels, octave shift, and so on).
-	if(const char* mn = std::getenv("G1_MIDINOTE"))
+	if(overlapNote >= 0)
+	{
+		const auto channel = static_cast<uint8_t>(std::getenv("G1_MIDINOTE") ? (std::atoi(std::getenv("G1_MIDINOTE")) - 1) & 0x0f : 0);
+		const auto totalMs = static_cast<uint64_t>(std::llround(seconds * 1000.0));
+		const auto firstOn = totalMs / 5, firstOff = totalMs * 2 / 5, secondOff = totalMs * 3 / 5;
+		auto sendNote = [&](const uint8_t status, const int pitch, const uint8_t velocity)
+		{
+			mc.getSci().write({static_cast<uint8_t>(status | channel), static_cast<uint8_t>(pitch), velocity});
+		};
+		std::printf("overlap MIDI channel %u: note %d on at 0 ms, note %d on at %llu ms, note %d off at %llu ms, note %d off at %llu ms\n",
+			channel + 1, note, overlapNote, static_cast<unsigned long long>(firstOn), note,
+			static_cast<unsigned long long>(firstOff), overlapNote, static_cast<unsigned long long>(secondOff));
+		sendNote(0x90, note, 100);
+		run(mc, firstOn * g_ms);
+		sendNote(0x90, overlapNote, 100);
+		run(mc, (firstOff - firstOn) * g_ms);
+		sendNote(0x80, note, 0);
+		run(mc, (secondOff - firstOff) * g_ms);
+		sendNote(0x80, overlapNote, 0);
+		run(mc, (totalMs - secondOff) * g_ms);
+	}
+	else if(const char* mn = std::getenv("G1_MIDINOTE"))
 	{
 		const auto ch = static_cast<uint8_t>((std::atoi(mn) - 1) & 0x0f);
 		mc.getSci().write({static_cast<uint8_t>(0x90 | ch), static_cast<uint8_t>(note), 100});

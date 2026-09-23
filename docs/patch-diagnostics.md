@@ -10,7 +10,8 @@ original G1 firmware's waveform compilation: both cases need the same real rack 
 After reviewing and committing the diagnostic changes, put the manual workflow on the
 repository's default branch. In Actions, select **Build patch diagnostic tools**, then
 **Run workflow**. It does not run on pushes, pull requests or tags and does not publish a
-release or build/install a VST3. The existing production workflow is unchanged.
+release or build/install a VST3. The production workflow separately packages the
+four-voice patch with its Windows VST artifact.
 
 The workflow uses the existing Windows toolchain, Gearmulator tag and JUCE version. NME
 defaults to the exact revision inspected during the Build #7 investigation. Set `nme_ref`
@@ -21,8 +22,8 @@ The diagnostic build uses the static MSVC runtime for a portable executable.
 
 Download **G1-patch-diagnostics-CMPM-build8-RUN-ATTEMPT** from the new workflow run's
 Artifacts section and extract it into a new directory. The artifact is retained for 14 days.
-It contains g1patchtest, dspdis, the
-matching modules.xml, SimpleOSC, the runner and provenance. There are no ROMs or dumps.
+It contains g1patchtest, dspdis, the matching modules.xml, SimpleOSC,
+WobbleVoice-4Voice, the runner and provenance. There are no ROMs or dumps.
 The pinned dsp56300 revision remains `1378c430...`; the correction is applied in the
 G1 build overlay. Check `build-info.json`: `buildId` must start with `CMPM-build8-`,
 `runUrl` must identify the new workflow run, and `executableSha256` must match the
@@ -67,6 +68,21 @@ cumulative since boot and may include upload transients. Compare both, not just 
 The WAV has the harness's existing +36 dB gain; the text reports raw and compensated levels.
 `G1_DUMP` captures the first 0x1000 words of P, X and Y on each DSP, not all memory. If relevant
 generated code lies above that range, further instrumentation will be needed.
+
+## Overlapping-note capture
+
+The same bundle can capture two overlapping notes through the G1 MIDI IN path. Run this
+in the extracted bundle directory with your own ROM:
+
+```powershell
+.\g1patchtest.exe 'C:\path\NORD-MODULAR-RACK-VER-3.03.BIN' .\WobbleVoice-4Voice.pch --modules .\modules.xml --note 60 --overlap-note 67 --seconds 4 --wav .\four-voice-overlap.wav
+```
+
+The diagnostic sends note 60 on at 0 s, note 67 on at 0.8 s, note 60 off at 1.6 s,
+and note 67 off at 2.4 s, leaving 1.6 s for the release tail. Its log reports the
+event times and the Nord display; the four-channel WAV captures the whole sequence.
+The existing single-note mode is unchanged. The ROM is read in place and is not
+included in the WAV or diagnostic artifact.
 
 To disassemble a P-memory dump, use the bundled tool, for example:
 

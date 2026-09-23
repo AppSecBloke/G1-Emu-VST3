@@ -7,6 +7,16 @@ Older entries cite their commit by hand.
 
 ## 2026-09-23
 
+- **Four-voice Wobble fixture and overlap probe (Codex; local change, not committed).**
+  Added `WobbleVoice-4Voice.pch`, differing from the mono fixture by only the
+  requested-voices header byte (1 to 4), and packaged it with the Windows VST
+  and diagnostic artifacts. Added an opt-in `g1patchtest --overlap-note` SCI MIDI
+  sequence with staggered note-offs and WAV capture. Verification: byte comparison
+  showed exactly one changed byte; the existing CMPM-corrected ROM-backed
+  g1patchtest uploaded the fixture, the Nord display reported `( 4)`, and both
+  stereo outputs sounded. The new overlap option awaits CI compilation and
+  local ROM-backed execution; Gig Performer polyphony remains to be checked.
+
 - **Wobble voice performance patch (Codex; local change, not committed).** Added
   `WobbleVoice.pch` alongside the preserved `SubtractiveVoice.pch`, connecting
   Keyboard velocity-on to ADSR amp and setting audible ADSR and LFO-to-FilterD
