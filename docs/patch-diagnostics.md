@@ -149,11 +149,21 @@ For the first persistent Square RX backlog, use `-SettleTrace -FocusMs 25`.
 ISR read, interrupt service and JIT block that changes RX depth from one
 millisecond before the focus through two milliseconds after it. It includes the
 word/vector, pre/post PC, cycles, status, RX depth and pending-interrupt state.
+The `squareirqboundary` build also records each IRQD injection in this event file.
 `dsp0-settle.csv.cpu-host.csv` lists the post-upload 68k accesses to DSP0's
 host-port registers with the CPU PC and value. The `cpu_host_accesses` column
 in `dsp0-settle.csv` maps those access sequence numbers to each millisecond.
 The event window and 20,000-block cap bound the output; if the decisive block
 falls in the next millisecond, rerun with `-FocusMs 26`.
+
+The `squareirqboundary` diagnostic build additionally writes
+`dsp0-settle.csv.host-blocks.csv` for up to 20,000 DSP0 JIT calls beginning
+when word 195 enters RX around millisecond 25. Run with `-SettleTrace -FocusMs 25`.
+Each row records the pre/post PC, cycles, SR, RX depth, pending-interrupt flag,
+last serviced vector, ESSI status registers, interrupt-priority register, and
+IRQD/vector-`$1E` mask states. Compare successive rows to see whether the host-command
+wait encounters an interrupt-free JIT boundary. The same runner still requires
+Saw-32 and Square-1 audio and Square-32 silence.
 
 ## Overlapping-note capture
 

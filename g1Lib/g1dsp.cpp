@@ -320,6 +320,9 @@ namespace g1
 		m_settleEvents.open(std::string(_path) + ".events.csv", std::ios::out | std::ios::trunc);
 		if(!m_settleEvents)
 			return false;
+		m_settleHostBlocks.open(std::string(_path) + ".host-blocks.csv", std::ios::out | std::ios::trunc);
+		if(!m_settleHostBlocks)
+			return false;
 		if(const char* focus = std::getenv("G1_DSP_SETTLE_FOCUS_MS"))
 			m_settleFocusMs = static_cast<uint32_t>(std::strtoul(focus, nullptr, 10));
 		m_settleBlocksTrace << "ms,block,cause,pre_pc,post_pc,pre_opcode,pre_cycles,post_cycles,"
@@ -328,6 +331,10 @@ namespace g1
 		m_settleEvents << "ms,seq,kind,value,pre_pc,post_pc,pre_opcode,post_opcode,pre_cycles,post_cycles,"
 			"pre_sr,post_sr,pre_rx,post_rx,pre_pending,post_pending,pre_vector,post_vector,"
 			"host_words,host_commands\n";
+		m_settleHostBlocks << "ms,block,cause,pre_pc,post_pc,pre_opcode,pre_cycles,post_cycles,"
+			"pre_sr,post_sr,pre_rx,post_rx,pre_pending,post_pending,pre_vector,post_vector,"
+			"pre_essi0_sr,post_essi0_sr,pre_essi1_sr,post_essi1_sr,pre_iprc,post_iprc,"
+			"pre_irqd_masked,post_irqd_masked,pre_vector1e_masked,post_vector1e_masked\n";
 		m_settleTrace << "uc_cycles,cpu_host_accesses,dsp_cycles,pc,opcode,sr,la,irqd_count,next_irqd,host_words,host_commands,"
 			"rx_depth,pending_interrupts,x1d,x1e,x1f,blocks,top_pc,top_pc_blocks,max_block_pc,max_block_cycles,"
 			"catchup_calls,catchup_cycles,hostword_calls,hostword_cycles,hostcommand_calls,hostcommand_cycles,"
@@ -340,6 +347,19 @@ namespace g1
 		const auto focus = static_cast<int32_t>(m_settleFocusMs);
 		return m_settleEvents.is_open() && m_settleSampleIndex >= focus - 1 &&
 			m_settleSampleIndex <= focus + 2 && m_settleLoggedEvents < 20000;
+	}
+
+	Dsp::InterruptBoundary Dsp::interruptBoundary()
+	{
+		InterruptBoundary s;
+		s.pending = m_dsp.hasPendingInterrupts();
+		s.lastVector = m_lastVector;
+		s.essi0Sr = static_cast<uint32_t>(m_periph.getEssi0().getSR());
+		s.essi1Sr = static_cast<uint32_t>(m_periph.getEssi1().getSR());
+		s.iprc = m_periph.read(0xffffff, dsp56k::Instruction::Invalid);
+		s.irqdMasked = m_dsp.isInterruptMasked(g_irqdVector);
+		s.vector1eMasked = m_dsp.isInterruptMasked(0x1e);
+		return s;
 	}
 
 	Dsp::SettleEventSnapshot Dsp::settleEventCapture()
@@ -403,9 +423,27 @@ namespace g1
 		watchExternal("between_calls");
 		const bool trackHost = settleEventsActive();
 		const auto hostBefore = trackHost ? settleEventCapture() : SettleEventSnapshot{};
+		const bool trackHostBlock = m_settleHostBlocksTriggered && m_settleLoggedHostBlocks < 20000;
+		const auto interruptBefore = trackHostBlock ? interruptBoundary() : InterruptBoundary{};
+		const auto rxBefore = trackHostBlock ? hdi08().rxData().size() : 0;
 		const auto before = watchCapture();
 		m_dsp.exec();
 		const auto after = watchCapture();
+		if(trackHostBlock)
+		{
+			const auto interruptAfter = interruptBoundary();
+			m_settleHostBlocks << m_settleSampleIndex << ',' << m_settleLoggedHostBlocks++ << ','
+				<< m_settleActiveCause << ',' << before.pc << ',' << after.pc << ',' << before.opcode
+				<< ',' << before.cycles << ',' << after.cycles << ',' << before.sr << ',' << after.sr
+				<< ',' << rxBefore << ',' << hdi08().rxData().size() << ','
+				<< interruptBefore.pending << ',' << interruptAfter.pending << ','
+				<< interruptBefore.lastVector << ',' << interruptAfter.lastVector << ','
+				<< interruptBefore.essi0Sr << ',' << interruptAfter.essi0Sr << ','
+				<< interruptBefore.essi1Sr << ',' << interruptAfter.essi1Sr << ','
+				<< interruptBefore.iprc << ',' << interruptAfter.iprc << ','
+				<< interruptBefore.irqdMasked << ',' << interruptAfter.irqdMasked << ','
+				<< interruptBefore.vector1eMasked << ',' << interruptAfter.vector1eMasked << '\n';
+		}
 		if(trackHost)
 		{
 			const auto hostAfter = settleEventCapture();
@@ -567,6 +605,10 @@ namespace g1
 				m_nextIrqd = (before - m_nextIrqd > g_cyclesPerFrame * 4) ? (before / g_cyclesPerFrame + 1) * g_cyclesPerFrame : m_nextIrqd + g_cyclesPerFrame;
 				if(irqdEnabled())
 				{
+#ifdef G1_DSP_TRACE
+					const bool traceIrqd = settleEventsActive();
+					const auto irqdBefore = traceIrqd ? settleEventCapture() : SettleEventSnapshot{};
+#endif
 					if(m_inputProvider)
 						m_inputProvider(m_input[1], m_input[0]);	// L comes in on ESSI1 and R on ESSI0
 					if(m_blockCallback)
@@ -575,6 +617,10 @@ namespace g1
 						tapLink(before / g_cyclesPerFrame);
 					m_dsp.injectInterrupt(g_irqdVector);	// like a peripheral: does not block
 					++m_irqdCount;
+#ifdef G1_DSP_TRACE
+					if(traceIrqd)
+						settleEvent("irqd_injected", g_irqdVector, irqdBefore, settleEventCapture());
+#endif
 				}
 			}
 			if(m_interpreter)
@@ -835,6 +881,10 @@ namespace g1
 		hdi08().writeRX(&_word, 1);
 		++m_hostWords;
 #ifdef G1_DSP_TRACE
+		if(_word == 195 && !m_settleHostBlocksTriggered &&
+			m_settleSampleIndex >= static_cast<int32_t>(m_settleFocusMs) &&
+			m_settleSampleIndex <= static_cast<int32_t>(m_settleFocusMs) + 1)
+			m_settleHostBlocksTriggered = true;
 		if(traceHost)
 			settleEvent("host_word_enqueued", _word, afterWait, settleEventCapture());
 		watchExternal("host_word");

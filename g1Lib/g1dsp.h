@@ -138,6 +138,12 @@ namespace g1
 		SettleEventSnapshot settleEventCapture();
 		void settleEvent(const char* _kind, uint32_t _value,
 			const SettleEventSnapshot& _before, const SettleEventSnapshot& _after);
+		struct InterruptBoundary
+		{
+			uint32_t essi0Sr = 0, essi1Sr = 0, iprc = 0, lastVector = 0;
+			bool pending = false, irqdMasked = false, vector1eMasked = false;
+		};
+		InterruptBoundary interruptBoundary();
 #endif
 		void drainAudio();
 		bool irqdEnabled();
@@ -177,6 +183,7 @@ namespace g1
 		std::ofstream m_settleTrace;
 		std::ofstream m_settleBlocksTrace;
 		std::ofstream m_settleEvents;
+		std::ofstream m_settleHostBlocks;
 		std::array<uint64_t, static_cast<size_t>(RunCause::Count)> m_settleCalls{}, m_settleCycles{};
 		std::map<uint32_t, uint64_t> m_settlePcs;
 		uint64_t m_settleBlocks = 0, m_settleMaxBlockCycles = 0;
@@ -184,6 +191,8 @@ namespace g1
 		int32_t m_settleSampleIndex = -1;
 		uint32_t m_settleFocusMs = 0, m_settleLoggedBlocks = 0, m_settleActiveCause = 0;
 		uint32_t m_settleLoggedEvents = 0;
+		uint32_t m_settleLoggedHostBlocks = 0;
+		bool m_settleHostBlocksTriggered = false;
 		std::array<dsp56k::TWord, 3> m_watchLast{};
 		std::string m_watchStage = "upload";
 		uint64_t m_watchCall = 0;

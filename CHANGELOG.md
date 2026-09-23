@@ -7,6 +7,14 @@ Older entries cite their commit by hand.
 
 ## 2026-09-23
 
+- **DSP0 Square interrupt-boundary diagnostic (Codex; local change, not committed).**
+  Added an opt-in, bounded trace of every DSP0 JIT return from host word 195,
+  recording interrupt pending state, last vector, ESSI status, priority and mask
+  alongside PC, cycles and RX depth. The matched runner requires this capture
+  while preserving normal 32-instruction execution and the audible/silent checks.
+  Verification: source/diff review, PowerShell syntax and whitespace checks;
+  CI compilation and ROM-backed comparison pending. No DSP or interrupt fix.
+
 - **DSP0 Square host-port first-event trace (Codex; local change, not committed).**
   Added opt-in, bounded post-upload logging of the first queued DSP0 host word,
   host-command and ISR waits, interrupt service, RX-depth-changing JIT blocks and
