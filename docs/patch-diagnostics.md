@@ -15,12 +15,18 @@ release or build/install a VST3. The existing production workflow is unchanged.
 The workflow uses the existing Windows toolchain, Gearmulator tag and JUCE version. NME
 defaults to the exact revision inspected during the Build #7 investigation. Set `nme_ref`
 to the NME commit used for the tested VST3 when known; the production workflow did not pin
-NME. `build-info.json` records all resolved core/dependency commits and the tool hash.
+NME. `build-info.json` records all resolved core/dependency commits, the corrected DSP
+overlay hash, a unique build ID and the diagnostic executable hash.
 The diagnostic build uses the static MSVC runtime for a portable executable.
 
-Download **G1-patch-diagnostics-windows-x64** from the workflow's Artifacts section and
-extract it. The artifact is retained for 14 days. It contains g1patchtest, dspdis, the
+Download **G1-patch-diagnostics-CMPM-build8-RUN-ATTEMPT** from the new workflow run's
+Artifacts section and extract it into a new directory. The artifact is retained for 14 days.
+It contains g1patchtest, dspdis, the
 matching modules.xml, SimpleOSC, the runner and provenance. There are no ROMs or dumps.
+The pinned dsp56300 revision remains `1378c430...`; the correction is applied in the
+G1 build overlay. Check `build-info.json`: `buildId` must start with `CMPM-build8-`,
+`runUrl` must identify the new workflow run, and `executableSha256` must match the
+downloaded `g1patchtest.exe`. The runner checks the build ID and hash before starting.
 
 ## Run the matched experiment
 
@@ -52,7 +58,7 @@ a WAV and all twelve memory dumps. A timeout/crash may produce incomplete or buf
 ## What to inspect or share
 
 - `run-info.json`: ROM/catalogue hashes, identical settings, fixture hashes and case outcomes.
-- `build-info.json`: executable and dependency provenance.
+- `build-info.json`: build ID, corrected DSP overlay and executable hashes, and dependency provenance.
 - `SimpleOSC.pch`, `SimpleOSC-Saw.pch`, `modules.xml`: exact matched inputs, excluding ROM.
 - Per case: `stdout.txt`, `stderr.txt`, `measurements.txt`, `output.wav` and `dumps/`.
 

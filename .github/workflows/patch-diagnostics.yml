@@ -51,6 +51,15 @@ jobs:
           -DNME_DIR="${{ github.workspace }}/Animatek-NME"
           -DG1_BACKEND=juce
 
+      - name: Verify corrected DSP overlay
+        run: |
+          $overlay = 'diagnostic-build/g1-dsp/dsp56kEmu/jitops_alu.cpp'
+          if (-not (Test-Path -LiteralPath $overlay -PathType Leaf)) { throw "Missing DSP overlay: $overlay" }
+          $source = (Get-Content -LiteralPath $overlay -Raw) -replace "`r`n", "`n"
+          if (-not $source.Contains("auto r = decode_JJJ_read_56(JJJ, !D);`n`t`tr.toTemp();`n`t`talu_cmp(D, r64(r.get()), true);")) {
+            throw 'The configured DSP overlay does not contain the CMPM accumulator-preservation correction.'
+          }
+
       - name: Build tools only
         run: cmake --build diagnostic-build --config Release --parallel --target g1patchtest dspdis g1dspcheck
 
@@ -68,14 +77,16 @@ jobs:
           Copy-Item G1-Emu/docs/patch-diagnostics.md diagnostic-bundle/README.md
           Copy-Item G1-Emu/LICENSE diagnostic-bundle/
           $info = [ordered]@{
+            buildId = "CMPM-build8-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
             g1 = (git -C G1-Emu rev-parse HEAD)
             gearmulator = (git -C gearmulator-md-mm rev-parse HEAD)
             dsp56300 = (git -C gearmulator-md-mm/source/dsp56300 rev-parse HEAD)
+            dspOverlayCmpmSha256 = (Get-FileHash diagnostic-build/g1-dsp/dsp56kEmu/jitops_alu.cpp -Algorithm SHA256).Hash
             mc68k = (git -C gearmulator-md-mm/source/mc68k rev-parse HEAD)
             juce = (git -C JUCE rev-parse HEAD)
             nme = (git -C Animatek-NME rev-parse HEAD)
             submodules = @(git -C gearmulator-md-mm submodule status --recursive)
-            configuration = 'Release, x64, static MSVC runtime, existing G1 core patches'
+            configuration = 'Release, x64, static MSVC runtime, G1 core overlay including CMPM fix'
             runnerImage = $env:ImageVersion
             runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
             executableSha256 = (Get-FileHash diagnostic-bundle/g1patchtest.exe -Algorithm SHA256).Hash
@@ -97,7 +108,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: G1-patch-diagnostics-windows-x64
+          name: G1-patch-diagnostics-CMPM-build8-${{ github.run_id }}-${{ github.run_attempt }}
           path: diagnostic-bundle/
           if-no-files-found: error
           retention-days: 14

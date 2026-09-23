@@ -21,8 +21,18 @@ if ((Test-Path -LiteralPath $output) -or (Test-Path -LiteralPath ($output + '.zi
 $sourcePatch = Join-Path $bundle 'SimpleOSC.pch'
 $modules = Join-Path $bundle 'modules.xml'
 $tool = Join-Path $bundle 'g1patchtest.exe'
-foreach ($file in @($sourcePatch, $modules, (Join-Path $bundle 'build-info.json'))) {
+foreach ($file in @($sourcePatch, $modules, $tool, (Join-Path $bundle 'build-info.json'))) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing bundle file: $file" }
+}
+$buildInfo = Get-Content -LiteralPath (Join-Path $bundle 'build-info.json') -Raw | ConvertFrom-Json
+if (-not $buildInfo.PSObject.Properties['buildId'] -or
+    -not $buildInfo.PSObject.Properties['dspOverlayCmpmSha256'] -or
+    $buildInfo.buildId -notlike 'CMPM-build8-*' -or
+    -not $buildInfo.dspOverlayCmpmSha256) {
+    throw 'This diagnostic bundle does not identify a verified CMPM-corrected DSP overlay. Download the CMPM-build8 artifact from a new workflow run.'
+}
+if ((Get-FileHash -LiteralPath $tool -Algorithm SHA256).Hash -ne $buildInfo.executableSha256) {
+    throw 'The diagnostic executable does not match the hash in build-info.json.'
 }
 
 # Fail rather than accidentally testing a different oscillator or changing another value.
@@ -54,7 +64,6 @@ if (-not $PrepareOnly) {
         throw 'Expected a 512 KB Nord Modular rack ROM (same checks as g1rom.h).'
     }
     $romHash = (Get-FileHash -LiteralPath $rom -Algorithm SHA256).Hash
-    if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) { throw 'Missing g1patchtest.exe.' }
 }
 
 New-Item -ItemType Directory -Path $output | Out-Null

@@ -7,6 +7,17 @@ Older entries cite their commit by hand.
 
 ## 2026-09-23
 
+- **CMPM diagnostic artifact identification (Codex; local change, not committed).**
+  The manual diagnostic workflow now verifies the configured CMPM source overlay before
+  building g1patchtest, records the overlay and executable SHA-256 hashes plus a unique
+  build ID, and labels its artifact with the workflow run and attempt. The matched-run
+  script rejects bundles without that ID or whose executable fails the recorded hash.
+  Updated the download instructions to identify the new artifact and its provenance.
+  Verification: traced g1patchtest and VST linkage to the same dsp56kEmu overlay;
+  PowerShell 5.1 preflight accepted matching metadata and rejected both the old bundle
+  metadata and a mismatched executable hash. Local CMake/MSVC execution is unavailable,
+  so CI compilation and the ROM-backed matched run remain pending.
+
 - **VST3 playability build #8 CMPM correction (Codex; local change, not committed).**
   The build overlay now copies accumulator-source CMPM operands to a temporary before the
   magnitude comparison, preserving the original A/B registers in the G1 Saw routine.
