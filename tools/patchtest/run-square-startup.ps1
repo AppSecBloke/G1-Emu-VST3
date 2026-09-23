@@ -145,21 +145,21 @@ if ($SettleTrace) {
             $rows = $settleByCase[$name]
             $deltas[$name] = [long]$rows[$i].dsp_cycles - [long]$rows[$i - 1].dsp_cycles
         }
-        $square = $settleByCase['Square-32'][$i]
+        $squareSample = $settleByCase['Square-32'][$i]
         [pscustomobject]@{
             millisecond = $i
             saw32_cycles = $deltas['Saw-32']
             square32_cycles = $deltas['Square-32']
             square1_cycles = $deltas['Square-1-reference']
             square32_excess_over_both = $deltas['Square-32'] - [Math]::Max($deltas['Saw-32'], $deltas['Square-1-reference'])
-            square32_pc = $square.pc
-            square32_top_pc = $square.top_pc
-            square32_top_pc_blocks = $square.top_pc_blocks
-            square32_catchup_cycles = $square.catchup_cycles
-            square32_hostword_cycles = $square.hostword_cycles
-            square32_hostcommand_cycles = $square.hostcommand_cycles
-            square32_readisr_cycles = $square.readisr_cycles
-            square32_rxempty_cycles = $square.rxempty_cycles
+            square32_pc = $squareSample.pc
+            square32_top_pc = $squareSample.top_pc
+            square32_top_pc_blocks = $squareSample.top_pc_blocks
+            square32_catchup_cycles = $squareSample.catchup_cycles
+            square32_hostword_cycles = $squareSample.hostword_cycles
+            square32_hostcommand_cycles = $squareSample.hostcommand_cycles
+            square32_readisr_cycles = $squareSample.readisr_cycles
+            square32_rxempty_cycles = $squareSample.rxempty_cycles
         }
     }
     $comparison | Export-Csv -LiteralPath (Join-Path $output 'settle-comparison.csv') -NoTypeInformation -Encoding Ascii

@@ -12,9 +12,12 @@ Older entries cite their commit by hand.
   for the 300 ms after patch upload. The probe separates ordinary catch-up from host
   word, host-command, ISR-read and RX-empty execution, and records PC, IRQ and register
   context for Saw-32, failing Square-32 and working Square-1. Normal 32-instruction
-  execution and audio acceptance checks remain unchanged. Verification: source and
-  diff review, PowerShell syntax and repository whitespace checks; CI build and
-  ROM-backed trace remain pending.
+  execution and audio acceptance checks remain unchanged. Corrected the PowerShell
+  runner's comparison-row variable so it does not replace the Square fixture path
+  before hashing. Verification: source and diff review, PowerShell syntax and
+  repository whitespace checks; the CI-built diagnostic produced all three expected
+  audio outcomes and the corrected runner completed ROM-backed focus-5 and focus-25
+  captures locally. No DSP fix was made.
 
 - **DSP0 Square startup watch (Codex; local change, not committed).** Added a
   diagnostic-only watch for `X:$1D–$1F` across patch upload, DSP loading and note-on,
