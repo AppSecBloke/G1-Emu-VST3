@@ -1,3 +1,7 @@
 add_library(g1Lib STATIC g1mc.cpp g1mc.h g1flash.h g1dsp.cpp g1dsp.h g1duart.h)
+option(G1_DSP_TRACE "Build the bounded DSP diagnostic trace" OFF)
+if(G1_DSP_TRACE)
+	target_compile_definitions(g1Lib PUBLIC G1_DSP_TRACE=1)
+endif()
 target_link_libraries(g1Lib PUBLIC 68kEmu dsp56kEmu g1Midi)
 target_include_directories(g1Lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/.. ${GEARMULATOR_DIR}/source)

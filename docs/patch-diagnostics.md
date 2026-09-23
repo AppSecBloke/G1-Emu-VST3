@@ -69,6 +69,32 @@ The WAV has the harness's existing +36 dB gain; the text reports raw and compens
 `G1_DUMP` captures the first 0x1000 words of P, X and Y on each DSP, not all memory. If relevant
 generated code lies above that range, further instrumentation will be needed.
 
+## Bounded DSP0 Square trace (diagnostic build only)
+
+The manual **Build patch diagnostic tools** workflow builds the diagnostic bundle with
+`G1_DSP_TRACE=ON`. Normal builds leave that option off. The trace runner uses your local ROM;
+neither the ROM nor the trace is uploaded to GitHub Actions. From the downloaded bundle:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run-square-trace.ps1 -RomPath 'D:\path\to\NORD-MODULAR-RACK-VER-3.03.BIN'
+```
+
+It makes a temporary patch differing only in OSC1 waveform (`2` Saw to `3` Square), starts each
+case from a fresh machine, and writes `square-trace.zip` next to the invocation directory. The
+runner checks the executable's build ID/hash and refuses the capture if Saw is not audible or
+Square is not silent under the single-instruction JIT configuration. `Saw` and `Square` each
+contain `run.txt`, P/X/Y dumps, `dsp0-steps.csv` and `dsp0-steps.csv.writes.csv`.
+
+The trace starts after 100 ms of the MIDI note, at the first DSP0 entry to `$03B7` (Saw) or
+`$03F2` (Square), and records at most 12000 JIT steps. Each CSV step has pre/post PC, opcode,
+cycles, A/B, X/Y data registers, R2–R5, status, X/Y values at candidate address-register
+locations and current output-buffer
+words. The writes CSV records every changed internal X/Y word in `$000`–`$7FF`. The register-address
+values are snapshots, not a claim that the current instruction read each one. A step is one
+JIT block with a one-instruction limit; compare its PC transition before interpreting a row as
+exactly one architectural instruction. The trace changes JIT block size only in this opt-in
+diagnostic run, so the runner's Saw/Square audio checks are necessary controls.
+
 ## Overlapping-note capture
 
 The same bundle can capture two overlapping notes through the G1 MIDI IN path. Run this

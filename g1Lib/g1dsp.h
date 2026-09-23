@@ -23,6 +23,9 @@
 #include <map>
 #include <memory>
 #include <vector>
+#ifdef G1_DSP_TRACE
+#include <fstream>
+#endif
 
 namespace mc68k { class Hdi08; }
 
@@ -48,6 +51,9 @@ namespace g1
 		const std::map<uint32_t, uint64_t>& servicedVectors() const { return m_servicedVectors; }
 		uint32_t lastVector() const { return m_lastVector; }
 		std::map<uint32_t, uint64_t>& pcWatch() { return m_pcWatch; }
+#ifdef G1_DSP_TRACE
+		bool armDiagnosticTrace(const char* _path, uint32_t _entryPc, uint32_t _steps);
+#endif
 		uint64_t hostCommands() const { return m_hostCommands; }
 		uint64_t wordsToHost() const { return m_wordsToHost; }
 
@@ -101,6 +107,9 @@ namespace g1
 		uint8_t readIsr(uint8_t _isr);
 		bool transferToHost();
 		void runUntil(uint64_t _cycles);
+#ifdef G1_DSP_TRACE
+		void traceExec();
+#endif
 		void drainAudio();
 		bool irqdEnabled();
 		void tapBlock();
@@ -131,6 +140,11 @@ namespace g1
 		std::map<uint32_t, uint64_t> m_servicedVectors;
 		uint32_t m_lastVector = 0;
 		std::map<uint32_t, uint64_t> m_pcWatch;	// PCs to watch (diagnostics only)
+#ifdef G1_DSP_TRACE
+		std::ofstream m_trace, m_traceWrites;
+		uint32_t m_traceEntry = 0, m_traceRemaining = 0, m_traceStep = 0;
+		bool m_traceStarted = false;
+#endif
 		Meter m_meter{};
 		AudioCallback m_audioCallback;
 		Dsp* m_next = nullptr;

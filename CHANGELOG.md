@@ -7,6 +7,13 @@ Older entries cite their commit by hand.
 
 ## 2026-09-23
 
+- **Bounded DSP0 Square diagnostic trace (Codex; local change, not committed).**
+  Added an opt-in, diagnostic-build-only DSP0 JIT-step trace and a matched local-ROM runner for
+  the stored-Saw and stored-Square 2OSC cases. The runner records registers, memory snapshots
+  at candidate address registers, changed X/Y words, output measurements and P/X/Y dumps; normal
+  VST builds do not compile the trace. Verification: reviewed the diff and parsed the PowerShell runner; local
+  CMake/MSVC compilation and ROM-backed trace capture await the diagnostic CI bundle.
+
 - **Two-oscillator four-voice test patch (Codex; local change, not committed).**
   Added `WobbleVoice-2Osc-4Voice.pch` with a second OscA and a Nord Mixer (3)
   before the existing FilterD/ADSR/stereo path; OSC2 starts at fine 66 versus

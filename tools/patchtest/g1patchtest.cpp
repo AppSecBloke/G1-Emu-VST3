@@ -16,6 +16,7 @@
 #include "midi/UploadPacketizer.h"
 #include "protocol/KnobAssignmentMessage.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -373,7 +374,33 @@ int main(int argc, char** argv)
 		const auto on = withChecksum({0xf0, 0x33, 0x5c, 0x06, static_cast<uint8_t>(pid), 0x56, 0x00, static_cast<uint8_t>(note)});
 		mc.getPcPort().receive(on);
 	}
-	run(mc, static_cast<uint64_t>(seconds * 1000) * g_ms);
+	const auto captureMs = static_cast<uint64_t>(seconds * 1000);
+#ifdef G1_DSP_TRACE
+	if(const char* tracePath = std::getenv("G1_DSP_TRACE_FILE"))
+	{
+		if(!std::getenv("G1_DSP_TRACE") || overlapNote >= 0 || captureMs < 150)
+		{
+			std::fprintf(stderr, "DSP trace requires G1_DSP_TRACE=1, a single note and at least 0.15 seconds.\n");
+			return 2;
+		}
+		// Let the MIDI note reach the firmware before selecting one complete DSP0
+		// routine entry. This keeps the trace bounded and excludes patch upload.
+		run(mc, 100 * g_ms);
+		const auto entry = std::getenv("G1_DSP_TRACE_START")
+			? static_cast<uint32_t>(std::strtoul(std::getenv("G1_DSP_TRACE_START"), nullptr, 0)) : 0x3f2u;
+		const auto requested = std::getenv("G1_DSP_TRACE_STEPS")
+			? static_cast<uint32_t>(std::strtoul(std::getenv("G1_DSP_TRACE_STEPS"), nullptr, 10)) : 4096u;
+		const auto steps = std::clamp(requested, 1u, 20000u);
+		if(!mc.getDsp(0).armDiagnosticTrace(tracePath, entry, steps))
+		{
+			std::fprintf(stderr, "Could not open the DSP0 trace output.\n");
+			return 2;
+		}
+		run(mc, (captureMs - 100) * g_ms);
+	}
+	else
+#endif
+		run(mc, captureMs * g_ms);
 	capture = false;
 	std::vector<uint8_t> rest;
 	mc.getPcPort().takeTx(rest);

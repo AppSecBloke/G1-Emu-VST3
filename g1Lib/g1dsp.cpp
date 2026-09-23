@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -75,6 +76,11 @@ namespace g1
 		config.dynamicPeripheralAddressing = false;
 		config.dynamicFastInterrupts = true;
 		config.maxInstructionsPerBlock = 32;
+#ifdef G1_DSP_TRACE
+		// Diagnostic bundles opt into single-instruction JIT blocks only for DSP0.
+		if(_index == 0 && std::getenv("G1_DSP_TRACE"))
+			config.maxInstructionsPerBlock = 1;
+#endif
 		config.maxDoIterations = 1;
 		m_dsp.getJit().setConfig(config);
 
@@ -204,6 +210,99 @@ namespace g1
 		m_hdiUc.setWriteTxCallback([this](const uint32_t _word) { hostWord(_word); });
 	}
 
+#ifdef G1_DSP_TRACE
+	bool Dsp::armDiagnosticTrace(const char* _path, const uint32_t _entryPc, const uint32_t _steps)
+	{
+		if(m_index != 0 || !_path || !_path[0] || !_steps)
+			return false;
+		m_trace.open(_path, std::ios::out | std::ios::trunc);
+		m_traceWrites.open(std::string(_path) + ".writes.csv", std::ios::out | std::ios::trunc);
+		if(!m_trace || !m_traceWrites)
+			return false;
+		m_trace << "step,phase,pc,opcode,cycles,a,b,x0,x1,y0,y1,r2,r3,r4,r5,sr,x5,x6,xr2,xr3,yr4,yr5,ybuf0,ybuf1\n";
+		m_traceWrites << "step,area,address,before,after\n";
+		m_traceEntry = _entryPc;
+		m_traceRemaining = _steps;
+		m_traceStep = 0;
+		m_traceStarted = false;
+		return true;
+	}
+
+	void Dsp::traceExec()
+	{
+		if(!m_traceStarted)
+		{
+			if(m_dsp.getPC().toWord() != m_traceEntry)
+			{
+				m_dsp.exec();
+				return;
+			}
+			m_traceStarted = true;
+		}
+		struct Snapshot
+		{
+			uint32_t pc = 0, opcode = 0, sr = 0;
+			uint32_t x0 = 0, x1 = 0, y0 = 0, y1 = 0;
+			uint32_t r2 = 0, r3 = 0, r4 = 0, r5 = 0;
+			int64_t a = 0, b = 0;
+			uint64_t cycles = 0;
+			std::array<dsp56k::TWord, 0x800> x{}, y{};
+		};
+		auto snapshot = [this]()
+		{
+			Snapshot s;
+			s.pc = m_dsp.getPC().toWord();
+			s.opcode = m_memory.get(dsp56k::MemArea_P, s.pc);
+			s.cycles = m_dsp.getCycles();
+			s.a = m_dsp.regs().a.var;
+			s.b = m_dsp.regs().b.var;
+			s.sr = m_dsp.getSR().toWord();
+			s.x0 = m_dsp.x0().toWord(); s.x1 = m_dsp.x1().toWord();
+			s.y0 = m_dsp.y0().toWord(); s.y1 = m_dsp.y1().toWord();
+			s.r2 = m_dsp.regs().r[2].var; s.r3 = m_dsp.regs().r[3].var;
+			s.r4 = m_dsp.regs().r[4].var; s.r5 = m_dsp.regs().r[5].var;
+			for(uint32_t i = 0; i < s.x.size(); ++i)
+			{
+				s.x[i] = m_memory.get(dsp56k::MemArea_X, i);
+				s.y[i] = m_memory.get(dsp56k::MemArea_Y, i);
+			}
+			return s;
+		};
+		const auto before = snapshot();
+		m_dsp.exec();
+		const auto after = snapshot();
+		auto emit = [this](const Snapshot& s, const char* phase)
+		{
+			const auto at = [](const auto& mem, uint32_t address)
+			{
+				return address < mem.size() ? static_cast<int64_t>(mem[address]) : int64_t{-1};
+			};
+			m_trace << m_traceStep << ',' << phase << ',' << s.pc << ',' << s.opcode
+				<< ',' << s.cycles << ',' << s.a << ',' << s.b << ',' << s.x0 << ',' << s.x1
+				<< ',' << s.y0 << ',' << s.y1 << ',' << s.r2 << ',' << s.r3 << ',' << s.r4
+				<< ',' << s.r5 << ',' << s.sr << ',' << s.x[5] << ',' << s.x[6]
+				<< ',' << at(s.x, s.r2) << ',' << at(s.x, s.r3)
+				<< ',' << at(s.y, s.r4) << ',' << at(s.y, s.r5)
+				<< ',' << at(s.y, s.x[5]) << ',' << at(s.y, s.x[6]) << '\n';
+		};
+		emit(before, "pre");
+		emit(after, "post");
+		for(uint32_t i = 0; i < before.x.size(); ++i)
+		{
+			if(before.x[i] != after.x[i])
+				m_traceWrites << m_traceStep << ",X," << i << ',' << before.x[i] << ',' << after.x[i] << '\n';
+			if(before.y[i] != after.y[i])
+				m_traceWrites << m_traceStep << ",Y," << i << ',' << before.y[i] << ',' << after.y[i] << '\n';
+		}
+		++m_traceStep;
+		if(--m_traceRemaining == 0)
+		{
+			m_trace.flush();
+			m_traceWrites.flush();
+		}
+	}
+#endif
+
 	void Dsp::runUntil(const uint64_t _cycles)
 	{
 		while(m_booted && m_dsp.getCycles() < _cycles)
@@ -242,6 +341,11 @@ namespace g1
 			if(m_interpreter)
 				m_dsp.execInterpreter();
 			else
+#ifdef G1_DSP_TRACE
+			if(m_index == 0 && m_traceRemaining)
+				traceExec();
+			else
+#endif
 				m_dsp.exec();
 			if(static_cast<dsp56k::TWord>(m_dsp.regs().la.var) != m_lastLa && !m_noLaFix)
 				onLaChanged();
