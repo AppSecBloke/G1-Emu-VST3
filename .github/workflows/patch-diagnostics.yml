@@ -88,6 +88,10 @@ jobs:
           & ./diagnostic-bundle/g1patchtest.exe 2> usage.txt
           if ($LASTEXITCODE -ne 2) { throw 'The diagnostic executable did not reach its usage check.' }
           ./diagnostic-bundle/run-matched.ps1 -PrepareOnly -OutputDirectory "$env:RUNNER_TEMP/patch-preflight"
+          # Exercise the documented Windows PowerShell 5.1 -File entry point,
+          # leaving BundleDirectory omitted so its script-local default is tested.
+          & "$env:WINDIR/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -ExecutionPolicy Bypass -File ./diagnostic-bundle/run-matched.ps1 -PrepareOnly -OutputDirectory "$env:RUNNER_TEMP/patch-preflight-ps51"
+          if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell 5.1 default-path preflight failed.' }
           # The expected usage exit above must not become this step's exit status.
           $global:LASTEXITCODE = 0
 

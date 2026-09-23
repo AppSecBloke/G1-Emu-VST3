@@ -7,6 +7,16 @@ Older entries cite their commit by hand.
 
 ## 2026-09-23
 
+- **Diagnostic runner PowerShell 5.1 path fix (Codex; local change, not committed).**
+  Reproduced the empty LiteralPath failure with the documented powershell.exe -File command:
+  PSScriptRoot was empty during the BundleDirectory parameter-default evaluation. Resolve
+  that default inside the script body instead. Added the exact PowerShell 5.1 -File entry
+  point to the manual workflow's bundle preflight. Verification: reproduced the failure,
+  then ran preflight successfully on PowerShell 5.1 and 7 with both optional paths omitted,
+  a different working directory and a bundle path containing spaces; checked the resulting
+  catalogue hashes and ZIP locations. Updated the extracted local artifact script as well.
+  No emulator changes and no ROM-backed experiment run as part of this fix.
+
 - **Manual matched-patch diagnostic bundle (Codex; local change, not committed).** Added
   a separate Windows workflow that builds g1patchtest/dspdis, runs the ROM-free DSP checks
   and packages a portable tool bundle with pinned/default dependency provenance. The local

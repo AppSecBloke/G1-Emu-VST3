@@ -3,13 +3,16 @@
 param(
     [string] $RomPath,
     [string] $OutputDirectory = (Join-Path (Get-Location) ('g1-matched-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))),
-    [string] $BundleDirectory = $PSScriptRoot,
+    [string] $BundleDirectory,
     [ValidateRange(10, 3600)][int] $TimeoutSeconds = 180,
     [switch] $PrepareOnly
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+# Windows PowerShell 5.1 -File does not populate PSScriptRoot during parameter
+# default evaluation. Resolve this default in the body, where it is available.
+if ([string]::IsNullOrWhiteSpace($BundleDirectory)) { $BundleDirectory = $PSScriptRoot }
 $bundle = (Resolve-Path -LiteralPath $BundleDirectory).Path
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 if ((Test-Path -LiteralPath $output) -or (Test-Path -LiteralPath ($output + '.zip'))) {
