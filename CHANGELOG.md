@@ -7,6 +7,14 @@ Older entries cite their commit by hand.
 
 ## 2026-09-24
 
+- **Bounded Square post-note control-flow trace (Codex; local change, not committed).**
+  Added diagnostic-only DSP0 JIT pre/post instruction and SR/register observations
+  for cycles 236,977,500–236,979,500, covering the first post-note Square-1
+  entry into P:`$023E` and the corresponding Square-32 event. Extended the
+  matched output runner with opt-in `-FlowTrace`, retaining the fine-drain and
+  silence/audio checks. Verification: static diff and PowerShell syntax checks;
+  CI compilation and ROM-backed trace comparison remain pending.
+
 - **Square voice runner validation correction (Codex; local change, not committed).**
   Made the diagnostic runner accept the observed absence of P:`$0244` execution
   in silent Square-32 while requiring it in audible Square-1, and record each

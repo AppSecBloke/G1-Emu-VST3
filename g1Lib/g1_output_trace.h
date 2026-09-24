@@ -120,7 +120,7 @@ namespace dsp56k
 	struct G1VoiceRegisters
 	{
 		uint64_t a = 0, b = 0, x0 = 0, x1 = 0, y0 = 0, y1 = 0;
-		uint64_t r1 = 0, r3 = 0, r4 = 0, n1 = 0;
+		uint64_t r1 = 0, r2 = 0, r3 = 0, r4 = 0, r5 = 0, n1 = 0, sr = 0;
 	};
 
 	struct G1VoiceTrace
@@ -143,6 +143,45 @@ namespace dsp56k
 	{
 		return (pc >= 0x23e && pc <= 0x244) || pc == 0x652 ||
 			(pc >= 0x663 && pc <= 0x672);
+	}
+
+	inline bool g1FlowTracePc(TWord pc)
+	{
+		return pc >= 0x100 && pc <= 0x700;
+	}
+
+	inline void g1FlowTraceEmit(const DSP& dsp, TWord pc, bool after)
+	{
+		if(g1OutputTrace().target.load(std::memory_order_acquire) != &dsp ||
+			!g1FlowTracePc(pc) || dsp.getCycles() < 236977500 ||
+			dsp.getCycles() > 236979500) return;
+		const char* path = std::getenv("G1_DSP_FLOW_FILE");
+		if(!path || !*path) return;
+		static std::ofstream out;
+		static uint64_t sequence = 0;
+		if(!out.is_open())
+		{
+			out.open(path, std::ios::out | std::ios::trunc);
+			if(out)
+				out << "sequence,phase,pc,opcode,block_entry_cycle,block_pc,output_write_sequence,sr,a,b,x0,x1,y0,y1,r1,r2,r3,r4,r5,n1,x_at_r2,x_at_r3,y_at_r4,y_at_r5,x1d,x1e,x1f,x24,x25,x26\n";
+		}
+		if(!out) return;
+		const auto& mem = dsp.memory();
+		const auto& regs = g1VoiceTrace().regs;
+		out << ++sequence << ',' << (after ? "post" : "pre") << ',' << pc
+			<< ',' << mem.get(MemArea_P, pc) << ',' << dsp.getCycles()
+			<< ',' << dsp.getPC().toWord() << ',' << g1OutputTrace().sequence << ',' << regs.sr
+			<< ',' << regs.a << ',' << regs.b << ',' << regs.x0 << ',' << regs.x1
+			<< ',' << regs.y0 << ',' << regs.y1 << ',' << regs.r1 << ',' << regs.r2
+			<< ',' << regs.r3 << ',' << regs.r4 << ',' << regs.r5 << ',' << regs.n1
+			<< ',' << mem.get(MemArea_X, regs.r2 & 0xfff)
+			<< ',' << mem.get(MemArea_X, regs.r3 & 0xfff)
+			<< ',' << mem.get(MemArea_Y, regs.r4 & 0xfff)
+			<< ',' << mem.get(MemArea_Y, regs.r5 & 0xfff)
+			<< ',' << mem.get(MemArea_X, 0x1d) << ',' << mem.get(MemArea_X, 0x1e)
+			<< ',' << mem.get(MemArea_X, 0x1f) << ',' << mem.get(MemArea_X, 0x24)
+			<< ',' << mem.get(MemArea_X, 0x25) << ',' << mem.get(MemArea_X, 0x26)
+			<< '\n';
 	}
 
 	inline void g1VoiceTraceEmit(const DSP& dsp, TWord pc, bool after)

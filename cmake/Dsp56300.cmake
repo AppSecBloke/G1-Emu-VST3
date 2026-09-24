@@ -133,21 +133,24 @@ if(G1_DSP_TRACE)
 		[=[void callG1VoiceTrace(DSP* dsp, TWord pc, TWord after)
 	{
 		g1VoiceTraceEmit(*dsp, pc, after != 0);
+		g1FlowTraceEmit(*dsp, pc, after != 0);
 	}
 
 	void JitBlock::g1TraceVoiceOp(TWord pc, bool after)
 	{
-		if(!g1VoiceTracePc(pc) || !std::getenv("G1_DSP_VOICE_FILE") ||
+		const bool voice = g1VoiceTracePc(pc) && std::getenv("G1_DSP_VOICE_FILE");
+		const bool flow = g1FlowTracePc(pc) && std::getenv("G1_DSP_FLOW_FILE");
+		if((!voice && !flow) ||
 			g1OutputTrace().target.load(std::memory_order_acquire) != &m_dsp) return;
 
 		const SkipLabel skip(m_asm);
 		{
 			const RegScratch pointer(*this), cycle(*this), bound(*this);
 			m_asm.mov(r64(cycle), m_mem.makePtr(pointer, &m_dsp.getCycles(), sizeof(uint64_t)));
-			m_asm.mov(r64(bound), asmjit::Imm(236970000));
+			m_asm.mov(r64(bound), asmjit::Imm(voice ? 236970000 : 236977500));
 			m_asm.cmp(r64(bound), r64(cycle));
 			m_asm.jg(skip.get());
-			m_asm.mov(r64(bound), asmjit::Imm(237070000));
+			m_asm.mov(r64(bound), asmjit::Imm(voice ? 237070000 : 236979500));
 			m_asm.cmp(r64(cycle), r64(bound));
 			m_asm.jg(skip.get());
 		}
@@ -177,6 +180,10 @@ if(G1_DSP_TRACE)
 			m_mem.mov(snapshot.r1, value.get());
 		}
 		{
+			const auto value = m_dspRegs.getR(2);
+			m_mem.mov(snapshot.r2, value.get());
+		}
+		{
 			const auto value = m_dspRegs.getR(3);
 			m_mem.mov(snapshot.r3, value.get());
 		}
@@ -185,9 +192,18 @@ if(G1_DSP_TRACE)
 			m_mem.mov(snapshot.r4, value.get());
 		}
 		{
+			const auto value = m_dspRegs.getR(5);
+			m_mem.mov(snapshot.r5, value.get());
+		}
+		{
 			DspValue value(*this);
 			m_dspRegs.getN(value, 1);
 			m_mem.mov(snapshot.n1, value.get());
+		}
+		{
+			const RegGP value(*this);
+			m_asm.mov(r32(value), r32(m_dspRegs.getSR(JitDspRegs::ReadWrite)));
+			m_mem.mov(snapshot.sr, value.get());
 		}
 		const FuncArg arg0(*this, 0), arg1(*this, 1), arg2(*this, 2);
 		m_mem.makeDspPtr(arg0);
