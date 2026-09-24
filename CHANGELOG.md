@@ -8,11 +8,14 @@ Older entries cite their commit by hand.
 ## 2026-09-24
 
 - **ESSI1 producer diagnostic (Codex; local change, not committed).**
-  Extended the opt-in diagnostic overlay with bounded ESSI clock catch-up and
-  receive-slot logging, correlated by DSP identity with the DMA3 interrupt
-  trace for Square-32 and Square-1. No peripheral or execution behaviour was
-  changed. Verification: static diff and PowerShell syntax checks; CI build
-  and ROM-backed A/B capture remain pending.
+  Extended the opt-in diagnostic overlay with bounded base/fine ESSI clock
+  catch-up and receive-slot logging, correlated by DSP identity with the DMA3 interrupt
+  trace for Square-32 and Square-1. Corrected the clock-source anchor after
+  Actions run 35935542462 failed at configure: pinned `esaiclock.cpp` uses
+  `ic - m_lastClock` and has a fine-link catch-up loop. No peripheral or
+  execution behaviour was changed. Verification: pinned-source anchor review,
+  static diff and PowerShell syntax checks; CI build and ROM-backed A/B capture
+  remain pending.
 
 - **Internal DSP0 DMA3 interrupt diagnostic (Codex; local change, not committed).**
   Added an opt-in, cycle-bounded trace in the diagnostic dsp56300 build copy at

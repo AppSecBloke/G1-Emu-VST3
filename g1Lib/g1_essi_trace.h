@@ -12,7 +12,9 @@ namespace dsp56k
 	inline void g1TraceEssiClock(const char* stage, IPeripherals& peripherals,
 		const uint64_t clockCount, const uint64_t lastClock, const uint32_t period,
 		const uint32_t clockSource, const int entry, const uintptr_t esxi,
-		const int rxCounter, const int rxDivider, const int rxCount)
+		const int rxCounter, const int rxDivider, const int rxCount,
+		const uint32_t finePeriod = 0, const uint64_t fineLastClock = 0,
+		const bool hasFine = false, const uint32_t nextDeadline = 0)
 	{
 		const char* path = std::getenv("G1_DSP_ESSI_TRACE_FILE");
 		const char* beginText = std::getenv("G1_DSP_DMA_TRACE_BEGIN");
@@ -34,7 +36,8 @@ namespace dsp56k
 		if(!header)
 		{
 			out << "sequence,stage,dsp,cycle,pc,clock_count,last_clock,clock_lag,period,"
-				"clock_source,entry,esxi,is_essi1,rx_counter,rx_divider,rx_count,essi1_sr\n";
+				"clock_source,entry,esxi,is_essi1,rx_counter,rx_divider,rx_count,"
+				"fine_period,fine_last_clock,fine_lag,has_fine,next_deadline,essi1_sr\n";
 			header = true;
 		}
 		auto& essi1 = static_cast<Peripherals56303&>(peripherals).getEssi1();
@@ -45,6 +48,8 @@ namespace dsp56k
 			<< clockSource << ',' << entry << ',' << esxi << ','
 			<< (esxi == reinterpret_cast<uintptr_t>(static_cast<Esxi*>(&essi1)))
 			<< ',' << rxCounter << ','
-			<< rxDivider << ',' << rxCount << ',' << sr << '\n';
+			<< rxDivider << ',' << rxCount << ',' << finePeriod << ',' << fineLastClock
+			<< ',' << (finePeriod ? clockCount - fineLastClock : 0) << ','
+			<< hasFine << ',' << nextDeadline << ',' << sr << '\n';
 	}
 }

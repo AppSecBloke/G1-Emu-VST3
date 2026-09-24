@@ -132,14 +132,20 @@ if(G1_DSP_TRACE)
 		"#include \"peripherals.h\""
 		"#include \"peripherals.h\"\n#include \"g1_essi_trace.h\"")
 	g1_dsp_replace(esaiclock.cpp
-		"const auto diff = *m_dspInstructionCounter - m_lastClock;"
-		"const auto diff = *m_dspInstructionCounter - m_lastClock;\n\tg1TraceEssiClock(\"clock_enter\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, 0, -1, -1, -1);")
+		"const auto diff = ic - m_lastClock;"
+		"const auto diff = ic - m_lastClock;\n\tg1TraceEssiClock(\"clock_enter\", m_periph, ic, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, 0, -1, -1, -1, 0, 0, m_hasFineEsais, m_nextCycleDeadline);")
+	g1_dsp_replace(esaiclock.cpp
+		"e.fineLastClock += e.finePeriod;"
+		"g1TraceEssiClock(\"fine_tick_pre\", m_periph, ic, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, reinterpret_cast<uintptr_t>(e.esai), e.rx.counter, e.rx.divider, -1, e.finePeriod, e.fineLastClock, m_hasFineEsais, m_nextCycleDeadline);\n\t\t\t\te.fineLastClock += e.finePeriod;\n\t\t\t\tg1TraceEssiClock(\"fine_tick_post\", m_periph, ic, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, reinterpret_cast<uintptr_t>(e.esai), e.rx.counter, e.rx.divider, -1, e.finePeriod, e.fineLastClock, m_hasFineEsais, m_nextCycleDeadline);")
+	g1_dsp_replace(esaiclock.cpp
+		"e.esai->execRX();"
+		"g1TraceEssiClock(\"fine_rx_pre\", m_periph, ic, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, reinterpret_cast<uintptr_t>(e.esai), e.rx.counter, e.rx.divider, -1, e.finePeriod, e.fineLastClock, m_hasFineEsais, m_nextCycleDeadline);\n\t\t\t\t\t\te.esai->execRX();\n\t\t\t\t\t\tg1TraceEssiClock(\"fine_rx_post\", m_periph, ic, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, reinterpret_cast<uintptr_t>(e.esai), e.rx.counter, e.rx.divider, -1, e.finePeriod, e.fineLastClock, m_hasFineEsais, m_nextCycleDeadline);")
 	g1_dsp_replace(esaiclock.cpp
 		"m_lastClock += m_cyclesPerSample;"
 		"m_lastClock += m_cyclesPerSample;\n\tg1TraceEssiClock(\"clock_advance\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, 0, -1, -1, -1);")
 	g1_dsp_replace(esaiclock.cpp
-		"if(e.esai->hasEnabledReceivers() && advanceClock(e.rx))"
-		"g1TraceEssiClock(\"rx_pre\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, reinterpret_cast<uintptr_t>(e.esai), e.rx.counter, e.rx.divider, rxCount);\n\t\tif(e.esai->hasEnabledReceivers() && advanceClock(e.rx))")
+		"if (e.esai->hasEnabledReceivers() && advanceClock(e.rx))"
+		"g1TraceEssiClock(\"rx_pre\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, reinterpret_cast<uintptr_t>(e.esai), e.rx.counter, e.rx.divider, rxCount);\n\t\t\tif (e.esai->hasEnabledReceivers() && advanceClock(e.rx))")
 	g1_dsp_replace(esaiclock.cpp
 		"processRx[rxCount++] = e.esai;"
 		"processRx[rxCount++] = e.esai;\n\t\tg1TraceEssiClock(\"rx_post\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, reinterpret_cast<uintptr_t>(e.esai), e.rx.counter, e.rx.divider, rxCount);")

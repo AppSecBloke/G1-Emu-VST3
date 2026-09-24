@@ -64,7 +64,7 @@ jobs:
             if (-not $dma.Contains($marker)) { throw "The DMA3 diagnostic overlay is missing $marker" }
           }
           $essiClock = Get-Content diagnostic-build/g1-dsp/dsp56kEmu/esaiclock.cpp -Raw
-          foreach ($marker in @('g1_essi_trace.h', '"clock_enter"', '"clock_advance"', '"rx_pre"', '"rx_post"', '"rx_dispatch"')) {
+          foreach ($marker in @('g1_essi_trace.h', '"clock_enter"', '"fine_tick_pre"', '"fine_tick_post"', '"fine_rx_pre"', '"fine_rx_post"', '"clock_advance"', '"rx_pre"', '"rx_post"', '"rx_dispatch"')) {
             if (-not $essiClock.Contains($marker)) { throw "The ESSI producer overlay is missing $marker" }
           }
 

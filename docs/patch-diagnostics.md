@@ -188,11 +188,13 @@ it fails rather than relaxing those checks if the trace changes behaviour.
 
 The `squareessiproducer` build retains the DMA3 trace and adds
 `dsp0-essi1-producer.csv` in each Square case. This records every bounded ESSI
-clock callback, its instruction/cycle counter, last clock tick, period, clock
-lag, receive slot counter/divider before and after selection, number of receive
-dispatches, and ESSI1 status. Match the `dsp` column with the DMA3 CSV, then
-group by `clock_count` and `rx_dispatch` to see how many receive intervals were
-processed during the PC `$16E` burst. Use the same `-SettleTrace -FocusMs 25`
+clock callback, its instruction/cycle counter, base and fine clock anchors,
+periods and lag, receive slot counter/divider before and after selection,
+receive dispatches, and ESSI1 status. Match the `dsp` column with the DMA3 CSV,
+then count `fine_rx_pre` versus base `rx_dispatch` rows for the PC `$16E` burst.
+The pinned core has a fine-link catch-up loop, so a fixed DSP cycle in the DMA
+CSV does not by itself mean all requests occurred in one clock interval. Use
+the same `-SettleTrace -FocusMs 25`
 command and audio acceptance checks. No timing or execution policy is changed.
 
 ## Overlapping-note capture
