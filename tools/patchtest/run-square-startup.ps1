@@ -3,6 +3,7 @@ param(
     [string]$OutputDirectory = (Join-Path (Get-Location).Path ('square-startup-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))),
     [switch]$SettleTrace,
     [switch]$ClockTimeline,
+    [switch]$DispatchTrace,
     [ValidateRange(0,299)][int]$FocusMs = 0
 )
 
@@ -26,7 +27,8 @@ if (($info.buildId -notlike 'CMPM-build8-squarestartup-*' -and
      $info.buildId -notlike 'CMPM-build8-squaredmawait-*' -and
      $info.buildId -notlike 'CMPM-build8-squareinternaldma-*' -and
      $info.buildId -notlike 'CMPM-build8-squareessiproducer-*' -and
-     $info.buildId -notlike 'CMPM-build8-squareclocktimeline-*') -or
+     $info.buildId -notlike 'CMPM-build8-squareclocktimeline-*' -and
+     $info.buildId -notlike 'CMPM-build8-squaredispatch-*') -or
     $info.executableSha256 -ne (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash) {
     throw 'This bundle is not the matching CMPM-corrected Square startup executable.'
 }
@@ -35,15 +37,21 @@ if ($SettleTrace -and $info.buildId -notlike 'CMPM-build8-squarehost-*' -and
     $info.buildId -notlike 'CMPM-build8-squaredmawait-*' -and
     $info.buildId -notlike 'CMPM-build8-squareinternaldma-*' -and
     $info.buildId -notlike 'CMPM-build8-squareessiproducer-*' -and
-    $info.buildId -notlike 'CMPM-build8-squareclocktimeline-*') {
+    $info.buildId -notlike 'CMPM-build8-squareclocktimeline-*' -and
+    $info.buildId -notlike 'CMPM-build8-squaredispatch-*') {
     throw 'The host-port event trace requires a squarehost, squareirqboundary or squaredmawait diagnostic build.'
 }
 if ((Get-Item -LiteralPath $RomPath).Length -ne 524288) {
     throw 'The G1 ROM must be exactly 524288 bytes.'
 }
 if ($ClockTimeline -and (-not $SettleTrace -or $FocusMs -ne 25 -or
-    $info.buildId -notlike 'CMPM-build8-squareclocktimeline-*')) {
-    throw 'ClockTimeline requires the squareclocktimeline build with -SettleTrace -FocusMs 25.'
+    ($info.buildId -notlike 'CMPM-build8-squareclocktimeline-*' -and
+     $info.buildId -notlike 'CMPM-build8-squaredispatch-*'))) {
+    throw 'ClockTimeline requires a matching diagnostic build with -SettleTrace -FocusMs 25.'
+}
+if ($DispatchTrace -and (-not $ClockTimeline -or
+    $info.buildId -notlike 'CMPM-build8-squaredispatch-*')) {
+    throw 'DispatchTrace requires the squaredispatch build with -ClockTimeline -SettleTrace -FocusMs 25.'
 }
 
 $output = [IO.Path]::GetFullPath($OutputDirectory)
@@ -67,7 +75,9 @@ $names = @('G1_MIDINOTE', 'G1_DSP_STARTUP_WATCH_FILE', 'G1_DSP_SETTLE_FILE',
            'G1_KNOBS', 'G1_PREPRESS', 'G1_PRESS', 'G1_HOLD', 'G1_HOLD_END', 'G1_DIAL',
            'G1_DSP_DMA_TRACE_FILE', 'G1_DSP_DMA_TRACE_BEGIN', 'G1_DSP_DMA_TRACE_END',
            'G1_DSP_ESSI_TRACE_FILE', 'G1_DSP_ESSI_TIMELINE_FILE',
-           'G1_DSP_ESSI_TIMELINE_BEGIN', 'G1_DSP_ESSI_TIMELINE_END')
+           'G1_DSP_ESSI_TIMELINE_BEGIN', 'G1_DSP_ESSI_TIMELINE_END',
+           'G1_DSP_DISPATCH_TRACE_FILE', 'G1_DSP_DISPATCH_TRACE_BEGIN',
+           'G1_DSP_DISPATCH_TRACE_END')
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 $allCheckpoints = @()
@@ -95,6 +105,16 @@ try {
             $env:G1_DSP_ESSI_TIMELINE_FILE = Join-Path $caseDir 'dsp0-essi-clock-timeline.csv'
             $env:G1_DSP_ESSI_TIMELINE_BEGIN = '200398090'
             $env:G1_DSP_ESSI_TIMELINE_END = '214500000'
+        }
+        if ($DispatchTrace) {
+            $env:G1_DSP_DISPATCH_TRACE_FILE = Join-Path $caseDir 'dsp0-dispatch.csv'
+            if ($case.Name -eq 'Saw-32') {
+                $env:G1_DSP_DISPATCH_TRACE_BEGIN = '211236500'
+                $env:G1_DSP_DISPATCH_TRACE_END = '211245500'
+            } else {
+                $env:G1_DSP_DISPATCH_TRACE_BEGIN = '211254700'
+                $env:G1_DSP_DISPATCH_TRACE_END = '211263700'
+            }
         }
         Remove-Item -LiteralPath Env:G1_DSP_DMA_TRACE_FILE, Env:G1_DSP_DMA_TRACE_BEGIN, Env:G1_DSP_DMA_TRACE_END, Env:G1_DSP_ESSI_TRACE_FILE -ErrorAction SilentlyContinue
         if ($SettleTrace -and ($info.buildId -like 'CMPM-build8-squareinternaldma-*' -or
@@ -142,6 +162,11 @@ try {
         if ($ClockTimeline -and -not (Select-String -LiteralPath $env:G1_DSP_ESSI_TIMELINE_FILE -Pattern '^host_word_195,' -Quiet)) {
             throw "$($case.Name) did not record the host-word-195 alignment marker."
         }
+        if ($DispatchTrace -and
+            ((-not (Test-Path -LiteralPath $env:G1_DSP_DISPATCH_TRACE_FILE -PathType Leaf)) -or
+             (Get-Item -LiteralPath $env:G1_DSP_DISPATCH_TRACE_FILE).Length -lt 1000)) {
+            throw "$($case.Name) did not record the bounded DSP0 dispatch window."
+        }
         if ($SettleTrace -and ((Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + '.blocks.csv')).Length -lt 1000)) {
             throw "$($case.Name) did not record focused DSP0 blocks."
         }
@@ -168,14 +193,16 @@ try {
                 $info.buildId -like 'CMPM-build8-squaredmawait-*' -or
                 $info.buildId -like 'CMPM-build8-squareinternaldma-*' -or
                 $info.buildId -like 'CMPM-build8-squareessiproducer-*' -or
-                $info.buildId -like 'CMPM-build8-squareclocktimeline-*') -and
+                $info.buildId -like 'CMPM-build8-squareclocktimeline-*' -or
+                $info.buildId -like 'CMPM-build8-squaredispatch-*') -and
                 (Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + '.host-blocks.csv')).Length -lt 1000) {
                 throw "$($case.Name) did not record word-195 interrupt boundaries."
             }
             if ($FocusMs -eq 25 -and ($info.buildId -like 'CMPM-build8-squaredmawait-*' -or
                 $info.buildId -like 'CMPM-build8-squareinternaldma-*' -or
                 $info.buildId -like 'CMPM-build8-squareessiproducer-*' -or
-                $info.buildId -like 'CMPM-build8-squareclocktimeline-*') -and
+                $info.buildId -like 'CMPM-build8-squareclocktimeline-*' -or
+                $info.buildId -like 'CMPM-build8-squaredispatch-*') -and
                 (Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + '.host-waits.csv')).Length -lt 1000) {
                 throw "$($case.Name) did not record the word-195 host-command waits."
             }
@@ -263,6 +290,7 @@ if ($SettleTrace) {
     referenceDsp0MaxInstructionsPerBlock = 1
     settleTrace = [bool]$SettleTrace
     clockTimeline = [bool]$ClockTimeline
+    dispatchTrace = [bool]$DispatchTrace
     focusMs = $FocusMs
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'startup-info.json') -Encoding UTF8
 $zip = "$output.zip"

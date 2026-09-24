@@ -64,11 +64,11 @@ jobs:
             if (-not $dma.Contains($marker)) { throw "The DMA3 diagnostic overlay is missing $marker" }
           }
           $essiClock = Get-Content diagnostic-build/g1-dsp/dsp56kEmu/esaiclock.cpp -Raw
-          foreach ($marker in @('g1_essi_trace.h', '"clock_enter"', '"clock_schedule"', '"fine_tick_pre"', '"fine_tick_post"', '"fine_rx_pre"', '"fine_rx_post"', '"clock_advance"', '"rx_pre"', '"rx_post"', '"rx_dispatch"')) {
+          foreach ($marker in @('g1_essi_trace.h', '"clock_enter"', '"clock_schedule"', '"clock_immediate"', '"fine_tick_pre"', '"fine_tick_post"', '"fine_rx_pre"', '"fine_rx_post"', '"clock_advance"', '"rx_pre"', '"rx_post"', '"rx_dispatch"')) {
             if (-not $essiClock.Contains($marker)) { throw "The ESSI producer overlay is missing $marker" }
           }
           $timeline = Get-Content G1-Emu/g1Lib/g1_essi_trace.h -Raw
-          foreach ($marker in @('G1_DSP_ESSI_TIMELINE_FILE', 'fine_threshold', 'g1TraceEssiBlock')) {
+          foreach ($marker in @('G1_DSP_ESSI_TIMELINE_FILE', 'G1_DSP_DISPATCH_TRACE_FILE', 'fine_threshold', 'g1TraceEssiBlock', 'g1TraceDispatchStep')) {
             if (-not $timeline.Contains($marker)) { throw "The ESSI clock timeline is missing $marker" }
           }
 
@@ -93,7 +93,7 @@ jobs:
           Copy-Item G1-Emu/docs/patch-diagnostics.md diagnostic-bundle/README.md
           Copy-Item G1-Emu/LICENSE diagnostic-bundle/
           $info = [ordered]@{
-            buildId = "CMPM-build8-squareclocktimeline-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+            buildId = "CMPM-build8-squaredispatch-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
             g1 = (git -C G1-Emu rev-parse HEAD)
             gearmulator = (git -C gearmulator-md-mm rev-parse HEAD)
             dsp56300 = (git -C gearmulator-md-mm/source/dsp56300 rev-parse HEAD)
@@ -104,7 +104,7 @@ jobs:
             juce = (git -C JUCE rev-parse HEAD)
             nme = (git -C Animatek-NME rev-parse HEAD)
             submodules = @(git -C gearmulator-md-mm submodule status --recursive)
-            configuration = 'Release, x64, static MSVC runtime, CMPM overlay and opt-in DSP0 ESSI clock timeline (32 failing, 1 reference)'
+            configuration = 'Release, x64, static MSVC runtime, CMPM overlay and opt-in DSP0 ESSI/interrupt dispatch trace (32 failing, 1 reference)'
             runnerImage = $env:ImageVersion
             runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
             executableSha256 = (Get-FileHash diagnostic-bundle/g1patchtest.exe -Algorithm SHA256).Hash
@@ -134,7 +134,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: G1-patch-diagnostics-CMPM-build8-squareclocktimeline-${{ github.run_id }}-${{ github.run_attempt }}
+          name: G1-patch-diagnostics-CMPM-build8-squaredispatch-${{ github.run_id }}-${{ github.run_attempt }}
           path: diagnostic-bundle/
           if-no-files-found: error
           retention-days: 14

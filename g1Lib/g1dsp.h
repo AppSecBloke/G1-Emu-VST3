@@ -177,6 +177,7 @@ namespace g1
 		uint32_t m_lastVector = 0;
 		std::map<uint32_t, uint64_t> m_pcWatch;	// PCs to watch (diagnostics only)
 #ifdef G1_DSP_TRACE
+		uint64_t m_dispatchServiced = 0;
 		std::ofstream m_trace, m_traceWrites;
 		uint32_t m_traceEntry = 0, m_traceRemaining = 0, m_traceStep = 0;
 		bool m_traceStarted = false;

@@ -213,6 +213,18 @@ settle event files before comparing Square-32 and Square-1, since multiple
 words can have that value and their absolute DSP cycles need not match. The runner still requires
 Saw-32 audible, Square-32 silent and Square-1 audible.
 
+The `squaredispatch` diagnostic build adds `dsp0-dispatch.csv` to each case.
+Run the matched runner with `-SettleTrace -FocusMs 25 -ClockTimeline -DispatchTrace`.
+Square-32 and Square-1 cover DSP0 cycles 211254700–211263700; Saw-32 covers
+its equivalent first-backlog phase at 211236500–211245500. Each JIT boundary
+records pre/post PC, cycles, processing mode, pending/external interrupt flags,
+whether peripheral dispatch was selected and due, the peripheral target clock,
+ESSI lag/deadline, ESSI callback count, and the number and last vector of
+interrupts serviced during that boundary. The pinned core does not expose the
+internal interrupt queue depth through a read-only public API; the trace uses
+the available pending flags and actual serviced-vector callback. The existing
+Saw-32/Square-32/Square-1 audio checks still gate the package.
+
 ## Overlapping-note capture
 
 The same bundle can capture two overlapping notes through the G1 MIDI IN path. Run this

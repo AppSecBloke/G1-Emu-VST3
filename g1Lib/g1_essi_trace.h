@@ -24,7 +24,9 @@ namespace dsp56k
 		uint32_t recentCount = 0, recentNext = 0;
 		uint64_t begin = 0, end = 0, lastEntry = 0, lastSample = 0;
 		uint64_t lastFineClock = 0, triggerCycle = 0, scheduledAt = 0;
+		uint64_t lastBaseClock = 0, clockCalls = 0;
 		uint32_t finePeriod = 0, fineReceives = 0, baseServices = 0;
+		uint32_t lastDeadline = 0;
 		uint32_t baseThreshold = 0, fineThreshold = 0, afterTrigger = 0, maxCatchup = 0;
 		uint32_t hostWord195Count = 0;
 		uint32_t previousPeriod = 0, previousSource = 0, scheduledDelay = 0;
@@ -99,6 +101,85 @@ namespace dsp56k
 		state.events << '\n';
 	}
 
+	struct G1DispatchSnapshot
+	{
+		uint64_t cycle = 0, instructions = 0, targetClock = 0, baseLag = 0,
+			fineLag = 0, clockCalls = 0, serviced = 0;
+		uint32_t pc = 0, mode = 0, deadline = 0, scheduledDelay = 0,
+			lastVector = 0;
+		bool pending = false, external = false, periphSelected = false, periphDue = false;
+	};
+
+	inline bool g1DispatchTraceActive(const uint64_t cycle)
+	{
+		static const char* path = std::getenv("G1_DSP_DISPATCH_TRACE_FILE");
+		static const char* beginText = std::getenv("G1_DSP_DISPATCH_TRACE_BEGIN");
+		static const char* endText = std::getenv("G1_DSP_DISPATCH_TRACE_END");
+		if(!path || !*path || !beginText || !endText) return false;
+		static const uint64_t begin = std::strtoull(beginText, nullptr, 10);
+		static const uint64_t end = std::strtoull(endText, nullptr, 10);
+		return cycle >= begin && cycle <= end;
+	}
+
+	inline G1DispatchSnapshot g1CaptureDispatch(DSP& dsp, const uint64_t serviced,
+		const uint32_t lastVector)
+	{
+		G1DispatchSnapshot s;
+		s.cycle = dsp.getCycles();
+		s.instructions = dsp.getInstructionCounter();
+		s.pc = dsp.getPC().toWord();
+		s.mode = static_cast<uint32_t>(dsp.getProcessingMode());
+		s.pending = dsp.hasPendingInterrupts();
+		s.external = dsp.hasPendingExternalInterrupts();
+		s.periphSelected = dsp.getInterruptFunc() == dsp.getExecPeripheralsFunc();
+		s.periphDue = dsp.getPeriph(0)->isDue(s.instructions, s.cycle);
+		s.targetClock = dsp.getPeriph(0)->getTargetClock();
+		s.serviced = serviced;
+		s.lastVector = lastVector;
+		auto& state = g1EssiTimeline();
+		std::lock_guard<std::mutex> lock(state.mutex);
+		s.baseLag = state.lastBaseClock && s.cycle >= state.lastBaseClock ?
+			s.cycle - state.lastBaseClock : 0;
+		s.fineLag = state.lastFineClock && s.cycle >= state.lastFineClock ?
+			s.cycle - state.lastFineClock : 0;
+		s.deadline = state.lastDeadline;
+		s.scheduledDelay = state.scheduledDelay;
+		s.clockCalls = state.clockCalls;
+		return s;
+	}
+
+	inline void g1TraceDispatchStep(const G1DispatchSnapshot& before,
+		const G1DispatchSnapshot& after, const uint32_t cause)
+	{
+		static const char* path = std::getenv("G1_DSP_DISPATCH_TRACE_FILE");
+		if(!path || !*path) return;
+		static std::ofstream out(path, std::ios::out | std::ios::trunc);
+		static bool header = false;
+		if(!out) return;
+		if(!header)
+		{
+			out << "pre_cycle,post_cycle,pre_pc,post_pc,cause,pre_instructions,post_instructions,selection,pre_mode,post_mode,pre_pending,post_pending,pre_external,post_external,pre_due,post_due,pre_target_clock,post_target_clock,pre_deadline,post_deadline,pre_scheduled_delay,post_scheduled_delay,pre_base_lag,post_base_lag,pre_fine_lag,post_fine_lag,clock_calls,interrupts_serviced,last_vector\n";
+			header = true;
+		}
+		const char* selection = before.periphSelected ?
+			(before.periphDue ? "peripheral" : "peripheral_not_due") :
+			before.mode == DSP::DefaultPreventInterrupt ? "interrupt_suppressed" :
+			before.mode == DSP::LongInterrupt ? "long_interrupt_noop" :
+			before.pending ? "interrupt" : "other";
+		out << before.cycle << ',' << after.cycle << ',' << before.pc << ',' << after.pc
+			<< ',' << cause << ',' << before.instructions << ',' << after.instructions
+			<< ',' << selection << ',' << before.mode << ',' << after.mode << ','
+			<< before.pending << ',' << after.pending << ',' << before.external << ','
+			<< after.external << ',' << before.periphDue << ',' << after.periphDue
+			<< ',' << before.targetClock << ',' << after.targetClock << ','
+			<< before.deadline << ',' << after.deadline << ','
+			<< before.scheduledDelay << ',' << after.scheduledDelay << ','
+			<< before.baseLag << ',' << after.baseLag << ','
+			<< before.fineLag << ',' << after.fineLag << ','
+			<< after.clockCalls - before.clockCalls << ','
+			<< after.serviced - before.serviced << ',' << after.lastVector << '\n';
+	}
+
 	inline void g1TraceEssiTimeline(const char* stage, IPeripherals& peripherals,
 		const uint64_t clockCount, const uint64_t lastClock, const uint32_t period,
 		const uint32_t source, const uintptr_t esxi, const uint32_t finePeriod,
@@ -131,6 +212,12 @@ namespace dsp56k
 		{
 			state.scheduledAt = cycle;
 			state.scheduledDelay = deadline;
+			state.lastDeadline = deadline;
+			return;
+		}
+		if(std::strcmp(stage, "clock_immediate") == 0)
+		{
+			state.lastDeadline = 0;
 			return;
 		}
 		if(std::strcmp(stage, "fine_rx_post") == 0 &&
@@ -139,7 +226,12 @@ namespace dsp56k
 			++state.fineReceives;
 			return;
 		}
-		if(std::strcmp(stage, "clock_advance") == 0) { ++state.baseServices; return; }
+		if(std::strcmp(stage, "clock_advance") == 0)
+		{
+			++state.baseServices;
+			state.lastBaseClock = lastClock;
+			return;
+		}
 		if(std::strcmp(stage, "fine_tick_post") == 0 &&
 			esxi == reinterpret_cast<uintptr_t>(&static_cast<Peripherals56303&>(peripherals).getEssi1()))
 		{
@@ -170,6 +262,9 @@ namespace dsp56k
 			return;
 		}
 		if(std::strcmp(stage, "clock_enter") != 0) return;
+		++state.clockCalls;
+		state.lastBaseClock = lastClock;
+		state.lastDeadline = deadline;
 		const uint64_t baseLag = clockCount - lastClock;
 		const uint64_t fineLag = state.lastFineClock && clockCount >= state.lastFineClock ?
 			clockCount - state.lastFineClock : 0;

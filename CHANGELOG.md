@@ -7,6 +7,15 @@ Older entries cite their commit by hand.
 
 ## 2026-09-24
 
+- **Bounded DSP0 dispatch diagnostic (Codex; local change, not committed).**
+  Added an opt-in pre/post JIT-boundary trace around the first ESSI backlog
+  transition for Square-32, Square-1 and Saw-32. It records peripheral due
+  state, dispatch selection, interrupt service, ESSI clock calls and deadlines
+  without changing scheduler or DSP behaviour. The matched runner retains its
+  audible/silent acceptance gates and has a distinct build ID. Verification:
+  pinned-source API/overlay review, diff and PowerShell syntax checks; CI
+  compilation and ROM-backed comparison remain pending.
+
 - **ESSI clock timeline configure correction (Codex; local change, not committed).**
   Fixed the diagnostic overlay's scheduling assignment anchor to match the pinned
   dsp56300 source (`_delay`). Actions run 35986477195 stopped at this CMake

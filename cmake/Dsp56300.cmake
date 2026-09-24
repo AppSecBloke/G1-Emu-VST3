@@ -138,6 +138,9 @@ if(G1_DSP_TRACE)
 		"m_nextCycleDeadline = _delay;"
 		"m_nextCycleDeadline = _delay;\n\t\t\tg1TraceEssiClock(\"clock_schedule\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, 0, -1, -1, -1, 0, 0, m_hasFineEsais, m_nextCycleDeadline);")
 	g1_dsp_replace(esaiclock.cpp
+		"m_nextCycleDeadline = 0;\n\t\t\treturn 0;"
+		"m_nextCycleDeadline = 0;\n\t\t\tg1TraceEssiClock(\"clock_immediate\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, 0, -1, -1, -1, 0, 0, m_hasFineEsais, m_nextCycleDeadline);\n\t\t\treturn 0;")
+	g1_dsp_replace(esaiclock.cpp
 		"e.fineLastClock += e.finePeriod;"
 		"g1TraceEssiClock(\"fine_tick_pre\", m_periph, ic, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, reinterpret_cast<uintptr_t>(e.esai), e.rx.counter, e.rx.divider, -1, e.finePeriod, e.fineLastClock, m_hasFineEsais, m_nextCycleDeadline);\n\t\t\t\te.fineLastClock += e.finePeriod;\n\t\t\t\tg1TraceEssiClock(\"fine_tick_post\", m_periph, ic, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, reinterpret_cast<uintptr_t>(e.esai), e.rx.counter, e.rx.divider, -1, e.finePeriod, e.fineLastClock, m_hasFineEsais, m_nextCycleDeadline);")
 	g1_dsp_replace(esaiclock.cpp

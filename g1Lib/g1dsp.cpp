@@ -151,6 +151,7 @@ namespace g1
 			++m_servicedVectors[_vba];
 			m_lastVector = _vba;
 #ifdef G1_DSP_TRACE
+			++m_dispatchServiced;
 			if(settleEventsActive())
 			{
 				const auto state = settleEventCapture();
@@ -630,6 +631,7 @@ namespace g1
 			const auto before = m_dsp.getCycles();
 #ifdef G1_DSP_TRACE
 			const auto blockPc = m_dsp.getPC().toWord();
+			const bool traceDispatch = m_index == 0 && dsp56k::g1DispatchTraceActive(before);
 #endif
 			if(before >= m_nextIrqd)
 			{
@@ -658,6 +660,11 @@ namespace g1
 #endif
 				}
 			}
+#ifdef G1_DSP_TRACE
+			const auto dispatchBefore = traceDispatch ?
+				dsp56k::g1CaptureDispatch(m_dsp, m_dispatchServiced, m_lastVector) :
+				dsp56k::G1DispatchSnapshot{};
+#endif
 			if(m_interpreter)
 				m_dsp.execInterpreter();
 			else
@@ -673,6 +680,10 @@ namespace g1
 				onLaChanged();
 			const auto now = m_dsp.getCycles();
 #ifdef G1_DSP_TRACE
+			if(traceDispatch)
+				dsp56k::g1TraceDispatchStep(dispatchBefore,
+					dsp56k::g1CaptureDispatch(m_dsp, m_dispatchServiced, m_lastVector),
+					static_cast<uint32_t>(_cause));
 			if(m_index == 0)
 				dsp56k::g1TraceEssiBlock(reinterpret_cast<uintptr_t>(&m_dsp), before, now,
 					blockPc, m_dsp.getPC().toWord());
