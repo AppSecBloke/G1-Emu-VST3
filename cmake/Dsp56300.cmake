@@ -147,7 +147,7 @@ if(G1_DSP_TRACE)
 		{
 			const RegScratch pointer(*this), cycle(*this), bound(*this);
 			m_asm.mov(r64(cycle), m_mem.makePtr(pointer, &m_dsp.getCycles(), sizeof(uint64_t)));
-			m_asm.mov(r64(bound), asmjit::Imm(voice ? 236970000 : 236977500));
+			m_asm.mov(r64(bound), asmjit::Imm(voice ? 236970000 : 236976000));
 			m_asm.cmp(r64(bound), r64(cycle));
 			m_asm.jg(skip.get());
 			m_asm.mov(r64(bound), asmjit::Imm(voice ? 237070000 : 236979500));

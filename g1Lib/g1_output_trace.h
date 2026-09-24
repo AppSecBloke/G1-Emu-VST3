@@ -153,7 +153,7 @@ namespace dsp56k
 	inline void g1FlowTraceEmit(const DSP& dsp, TWord pc, bool after)
 	{
 		if(g1OutputTrace().target.load(std::memory_order_acquire) != &dsp ||
-			!g1FlowTracePc(pc) || dsp.getCycles() < 236977500 ||
+			!g1FlowTracePc(pc) || dsp.getCycles() < 236976000 ||
 			dsp.getCycles() > 236979500) return;
 		const char* path = std::getenv("G1_DSP_FLOW_FILE");
 		if(!path || !*path) return;
@@ -163,7 +163,7 @@ namespace dsp56k
 		{
 			out.open(path, std::ios::out | std::ios::trunc);
 			if(out)
-				out << "sequence,phase,pc,opcode,block_entry_cycle,block_pc,output_write_sequence,sr,a,b,x0,x1,y0,y1,r1,r2,r3,r4,r5,n1,x_at_r2,x_at_r3,y_at_r4,y_at_r5,x1d,x1e,x1f,x24,x25,x26\n";
+				out << "sequence,phase,pc,opcode,block_entry_cycle,block_pc,output_write_sequence,sr,a,b,x0,x1,y0,y1,r1,r2,r3,r4,r5,n1,x_at_r2,x_at_r3,y_at_r4,y_at_r5,x1_cell,x1d,x1e,x1f,x24,x25,x26\n";
 		}
 		if(!out) return;
 		const auto& mem = dsp.memory();
@@ -178,7 +178,7 @@ namespace dsp56k
 			<< ',' << mem.get(MemArea_X, regs.r3 & 0xfff)
 			<< ',' << mem.get(MemArea_Y, regs.r4 & 0xfff)
 			<< ',' << mem.get(MemArea_Y, regs.r5 & 0xfff)
-			<< ',' << mem.get(MemArea_X, 0x1d) << ',' << mem.get(MemArea_X, 0x1e)
+			<< ',' << mem.get(MemArea_X, 0x1) << ',' << mem.get(MemArea_X, 0x1d) << ',' << mem.get(MemArea_X, 0x1e)
 			<< ',' << mem.get(MemArea_X, 0x1f) << ',' << mem.get(MemArea_X, 0x24)
 			<< ',' << mem.get(MemArea_X, 0x25) << ',' << mem.get(MemArea_X, 0x26)
 			<< '\n';

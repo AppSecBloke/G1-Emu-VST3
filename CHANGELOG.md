@@ -7,6 +7,14 @@ Older entries cite their commit by hand.
 
 ## 2026-09-24
 
+- **Bounded DSP0 X:`$1` producer trace (Codex; local change, not committed).**
+  Extended the diagnostic-only control-flow window just far enough before the
+  first post-note P:`$0172` branch to capture P:`$0340–$0343` counter updates,
+  and recorded the X:`$1` cell alongside the existing SR/register snapshots.
+  The matched runner verifies a preceding producer in both cases and retains
+  its fine-drain, audio and P-memory gates. Verification: static diff and
+  PowerShell syntax checks; CI compilation and ROM-backed comparison pending.
+
 - **Bounded Square post-note control-flow trace (Codex; local change, not committed).**
   Added diagnostic-only DSP0 JIT pre/post instruction and SR/register observations
   for cycles 236,977,500–236,979,500, covering the first post-note Square-1

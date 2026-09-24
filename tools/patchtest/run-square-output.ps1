@@ -17,12 +17,12 @@ foreach ($path in @($RomPath, $exe, $modules, $fixture, $buildInfo)) {
     }
 }
 $info = Get-Content -LiteralPath $buildInfo -Raw | ConvertFrom-Json
-if ($info.buildId -notmatch '^CMPM-build8-square(output|voice|flow)-' -or
+if ($info.buildId -notmatch '^CMPM-build8-square(output|voice|flow|x1)-' -or
     $info.executableSha256 -ne (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash) {
     throw 'This bundle is not the bounded Square output diagnostic executable.'
 }
-if ($FlowTrace -and $info.buildId -notmatch '^CMPM-build8-squareflow-') {
-    throw 'The requested control-flow trace requires the squareflow diagnostic executable.'
+if ($FlowTrace -and $info.buildId -notmatch '^CMPM-build8-squarex1-') {
+    throw 'The requested X:$1 producer trace requires the squarex1 diagnostic executable.'
 }
 if ((Get-Item -LiteralPath $RomPath).Length -ne 524288) {
     throw 'The G1 ROM must be exactly 524288 bytes.'
@@ -66,7 +66,7 @@ try {
         $env:G1_DSP_OUTPUT_END = '237070000'
         $env:G1_DSP_OUTPUT_WRITES_FILE = Join-Path $caseDir 'dsp0-output-writes.csv'
         $env:G1_DSP_OUTPUT_LINK_FILE = Join-Path $caseDir 'dsp0-output-link.csv'
-        if ($info.buildId -match '^CMPM-build8-square(voice|flow)-') {
+        if ($info.buildId -match '^CMPM-build8-square(voice|flow|x1)-') {
             $env:G1_DSP_VOICE_FILE = Join-Path $caseDir 'dsp0-voice-producer.csv'
         }
         if ($FlowTrace) { $env:G1_DSP_FLOW_FILE = Join-Path $caseDir 'dsp0-voice-flow.csv' }
@@ -105,7 +105,7 @@ try {
             $targetWrite.address -ne '1760') {
             throw "$($case.Name) no longer has the aligned output write #437; partial data is in $output"
         }
-        if ($info.buildId -match '^CMPM-build8-square(voice|flow)-') {
+        if ($info.buildId -match '^CMPM-build8-square(voice|flow|x1)-') {
             $voice = @(Import-Csv -LiteralPath $env:G1_DSP_VOICE_FILE)
             $sourceWrites = @($voice | Where-Object { $_.pc -eq '580' -and $_.phase -eq 'post' })
             $targetProducer = @($voice | Where-Object { $_.pc -eq '1650' -and $_.phase -eq 'post' -and $_.output_write_sequence -eq '437' })
@@ -117,9 +117,18 @@ try {
         }
         if ($FlowTrace) {
             $flow = @(Import-Csv -LiteralPath $env:G1_DSP_FLOW_FILE)
+            $branch = $flow | Where-Object {
+                $_.pc -eq '370' -and $_.phase -eq 'pre' -and
+                [long]$_.block_entry_cycle -ge 236977674
+            } | Select-Object -First 1
+            $producer = $flow | Where-Object {
+                $_.pc -eq '835' -and $_.phase -eq 'post' -and
+                $null -ne $branch -and [long]$_.sequence -lt [long]$branch.sequence
+            } | Select-Object -Last 1
             if (-not $flow.Count -or
+                $null -eq $branch -or $null -eq $producer -or
                 ($case.Audible -and -not @($flow | Where-Object { $_.pc -eq '574' -and $_.phase -eq 'pre' }).Count)) {
-                throw "$($case.Name) lacks the bounded post-note control-flow trace; partial data is in $output"
+                throw "$($case.Name) lacks the X:`$1 producer/consumer trace; partial data is in $output"
             }
         }
         $firstNonzeroWrite = $writes | Where-Object { [long]$_.new -ne 0 } | Select-Object -First 1
@@ -135,8 +144,10 @@ try {
             firstNonzeroWritePc = if ($null -ne $firstNonzeroWrite) { $firstNonzeroWrite.instruction_pc } else { '' }
             firstNonzeroLinkCycle = if ($null -ne $firstNonzeroLink) { $firstNonzeroLink.cycle } else { '' }
             targetWrite437Value = $targetWrite.new
-            source0244WriteCount = if ($info.buildId -match '^CMPM-build8-square(voice|flow)-') { $sourceWrites.Count } else { '' }
+            source0244WriteCount = if ($info.buildId -match '^CMPM-build8-square(voice|flow|x1)-') { $sourceWrites.Count } else { '' }
             postNoteFlowRecords = if ($FlowTrace) { $flow.Count } else { '' }
+            lastX1ProducerSequence = if ($FlowTrace) { $producer.sequence } else { '' }
+            x1AtFirstPostNoteBranch = if ($FlowTrace) { $branch.x1_cell } else { '' }
             dsp0PMemorySha256 = (Get-FileHash -LiteralPath (Join-Path $dumpDir 'dsp0_p.hex') -Algorithm SHA256).Hash
         }
     }
@@ -159,7 +170,7 @@ $summary | Export-Csv -LiteralPath (Join-Path $output 'comparison.csv') -NoTypeI
     executableSha256 = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
     romSha256 = (Get-FileHash -LiteralPath $RomPath -Algorithm SHA256).Hash
     squarePatchSha256 = (Get-FileHash -LiteralPath $square -Algorithm SHA256).Hash
-    observationWindow = if ($FlowTrace) { 'DSP0 control flow, cycles 236977500 through 236979500, plus established output and voice probes' } else { 'DSP0 cycles 236970000 through 237070000, with JIT and DMA Y output writes plus each link sample' }
+    observationWindow = if ($FlowTrace) { 'DSP0 X:$1 producer/control flow, cycles 236976000 through 236979500, plus established output and voice probes' } else { 'DSP0 cycles 236970000 through 237070000, with JIT and DMA Y output writes plus each link sample' }
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'experiment-info.json') -Encoding UTF8
 $zip = $output + '.zip'
 Compress-Archive -Path (Join-Path $output '*') -DestinationPath $zip
