@@ -12,9 +12,11 @@ Older entries cite their commit by hand.
   blocks near pending dispatch/peripheral/IRQD deadlines and immediately after
   interrupt suppression, while retaining the normal 32-instruction maximum
   elsewhere. Added block-size/host counters and a matched Saw-32, Square-1,
-  Square-32 runner. Verification: PowerShell syntax and static diff checks;
-  CI compilation and ROM-backed behavioural comparison remain pending because
-  this machine has no local CMake/MSVC toolchain.
+  Square-32 runner. Corrected the overlay anchor after diagnostic Actions run
+  36070895194 failed during CMake configuration: the pinned core calls its JIT
+  trampoline from `dsp.h`. Verification: inspected that pinned source and ran
+  PowerShell syntax and static diff checks; CI compilation and ROM-backed
+  behavioural comparison remain pending on this machine.
 
 ## 2026-09-24
 

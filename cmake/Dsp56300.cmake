@@ -300,8 +300,8 @@ if(G1_DSP_TRACE)
 		"bool\t\t\t\t\t\t\tm_invalidPCReported = false;"
 		"bool\t\t\t\t\t\t\tm_invalidPCReported = false;\n\t\tbool\t\t\t\t\t\t\tm_g1FineDrainActive = false;\n\t\tuint32_t\t\t\t\t\t\tm_g1FineDrainRemaining = 0;\n\t\tbool\t\t\t\t\t\t\tm_g1DeadlineEnabled = false;\n\t\tbool\t\t\t\t\t\t\tm_g1DeadlineFine = false;\n\t\tstd::unordered_map<TWord, bool> m_g1DeadlineVariants;")
 	g1_dsp_replace(dsp.h
-		"m_jitEntries[pc](&reg, pc);"
-		"g1DeadlineBlock(pc);\n\t\t\tm_jitEntries[pc](&reg, pc);")
+		"m_jit.getTrampoline().execOne(&reg, pc, m_jitEntries[pc]);"
+		"g1DeadlineBlock(pc);\n\t\t\tm_jit.getTrampoline().execOne(&reg, pc, m_jitEntries[pc]);")
 	g1_dsp_replace(dsp.h
 		"const auto delayA = static_cast<Ta*>(perif[0])->exec();"
 		"g1TraceCallbackWindowState(\"callback_entry\");\n\t\t\tconst auto delayA = static_cast<Ta*>(perif[0])->exec();")
