@@ -152,6 +152,12 @@ namespace g1
 			m_lastVector = _vba;
 #ifdef G1_DSP_TRACE
 			++m_dispatchServiced;
+			if(m_index == 0 && _vba == 0x7e && m_vector7eAwaitingService)
+			{
+				vector7eProbeRecord("vector7e_service_callback");
+				m_vector7eAwaitingService = false;
+				m_vector7ePostBlock = true;
+			}
 			if(m_index == 0 && _vba == g_irqdVector)
 				dsp56k::g1TraceIrqdEvent("vector16_serviced", m_dsp,
 					m_nextIrqd, m_nextIrqd, m_irqdCount, m_irqdCount,
@@ -316,6 +322,8 @@ namespace g1
 		m_watchStage = _stage;
 		const auto s = watchCapture();
 		watchEmit("checkpoint", s, s);
+		if(std::strcmp(_stage, "before_note") == 0)
+			vector7eProbeRecord("before_note");
 		m_startupWatch.flush();
 	}
 
@@ -372,6 +380,47 @@ namespace g1
 		m_causalLinkCount = 0;
 		m_causalFirstNonzero = false;
 		return true;
+	}
+
+	void Dsp::vector7eProbeRecord(const char* _event)
+	{
+		if(!m_vector7eActive) return;
+		if(!m_vector7eTrace.is_open())
+		{
+			const char* path = std::getenv("G1_DSP_VECTOR7E_TRACE_FILE");
+			if(!path || !*path) return;
+			m_vector7eTrace.open(path, std::ios::out | std::ios::trunc);
+			m_vector7eWrites.open(std::string(path) + ".writes.csv", std::ios::out | std::ios::trunc);
+			if(!m_vector7eTrace || !m_vector7eWrites) return;
+			m_vector7eTrace << "event,cycle,pc,opcode,r0,rx_depth,host_words,host_commands,pending,last_vector,x1d,x1e,x1f\n";
+			m_vector7eWrites << "event,area,address,before,after\n";
+		}
+		const auto pc = m_dsp.getPC().toWord();
+		m_vector7eTrace << _event << ',' << m_dsp.getCycles() << ',' << pc << ','
+			<< (pc < m_memory.sizeP() ? m_memory.get(dsp56k::MemArea_P, pc) : 0)
+			<< ',' << m_dsp.regs().r[0].var << ',' << hdi08().rxData().size()
+			<< ',' << m_hostWords << ',' << m_hostCommands << ','
+			<< m_dsp.hasPendingInterrupts() << ',' << m_lastVector << ','
+			<< m_memory.get(dsp56k::MemArea_X, 0x1d) << ','
+			<< m_memory.get(dsp56k::MemArea_X, 0x1e) << ','
+			<< m_memory.get(dsp56k::MemArea_X, 0x1f) << '\n';
+		const bool full = std::strcmp(_event, "before_note") == 0;
+		for(uint32_t i = 0; i < 0x800; ++i)
+		{
+			const auto x = m_memory.get(dsp56k::MemArea_X, i);
+			const auto y = m_memory.get(dsp56k::MemArea_Y, i);
+			const auto p = m_memory.get(dsp56k::MemArea_P, i);
+			if(full || (m_vector7eSnapshotValid && x != m_vector7eX[i]))
+				m_vector7eWrites << _event << ",X," << i << ',' << m_vector7eX[i] << ',' << x << '\n';
+			if(full || (m_vector7eSnapshotValid && y != m_vector7eY[i]))
+				m_vector7eWrites << _event << ",Y," << i << ',' << m_vector7eY[i] << ',' << y << '\n';
+			if(full || (m_vector7eSnapshotValid && p != m_vector7eP[i]))
+				m_vector7eWrites << _event << ",P," << i << ',' << m_vector7eP[i] << ',' << p << '\n';
+			m_vector7eX[i] = x;
+			m_vector7eY[i] = y;
+			m_vector7eP[i] = p;
+		}
+		m_vector7eSnapshotValid = true;
 	}
 
 	bool Dsp::settleEventsActive() const
@@ -708,6 +757,11 @@ namespace g1
 				onLaChanged();
 			const auto now = m_dsp.getCycles();
 #ifdef G1_DSP_TRACE
+			if(m_vector7ePostBlock)
+			{
+				vector7eProbeRecord("vector7e_block_exit");
+				m_vector7ePostBlock = false;
+			}
 			if(traceDispatch)
 				dsp56k::g1TraceDispatchStep(dispatchBefore,
 					dsp56k::g1CaptureDispatch(m_dsp, m_dispatchServiced, m_lastVector),
@@ -1006,6 +1060,12 @@ namespace g1
 		if(!m_booted)
 			return;
 #ifdef G1_DSP_TRACE
+		if(m_index == 0 && _vector == 0x7e && m_hostWords == 4185 &&
+			std::getenv("G1_DSP_VECTOR7E_TRACE_FILE"))
+		{
+			m_vector7eActive = true;
+			vector7eProbeRecord("command_enter");
+		}
 		if(m_index == 0)
 			dsp56k::g1TraceCausalHost("command_enter", m_dsp, _vector,
 				m_hostWords, m_hostCommands, m_nextIrqd, hdi08().hasRXData());
@@ -1058,6 +1118,8 @@ namespace g1
 		if(m_dsp.hasPendingInterrupts())
 		{
 #ifdef G1_DSP_TRACE
+			if(m_vector7eActive && _vector == 0x7e && m_hostWords == 4185)
+				vector7eProbeRecord("command_dropped");
 			if(m_index == 0)
 				dsp56k::g1TraceCausalHost("command_dropped", m_dsp, _vector,
 					m_hostWords, m_hostCommands, m_nextIrqd, hdi08().hasRXData());
@@ -1066,9 +1128,15 @@ namespace g1
 #endif
 			return;	// the DSP does not service them (stopped): better to lose the command than hang
 		}
+#ifdef G1_DSP_TRACE
+		if(m_vector7eActive && _vector == 0x7e && m_hostWords == 4185)
+			m_vector7eAwaitingService = true;
+#endif
 		hdi08().writeHostCommand(_vector);
 		++m_hostCommands;
 #ifdef G1_DSP_TRACE
+		if(m_vector7eActive && _vector == 0x7e && m_hostWords == 4185)
+			vector7eProbeRecord("command_written");
 		if(m_index == 0)
 			dsp56k::g1TraceCausalHost("command_written", m_dsp, _vector,
 				m_hostWords, m_hostCommands, m_nextIrqd, hdi08().hasRXData());

@@ -6,6 +6,7 @@ param(
     [switch]$DispatchTrace,
     [switch]$IrqdTrace,
     [switch]$CausalTrace,
+    [switch]$Vector7eTrace,
     [ValidateRange(0,299)][int]$FocusMs = 0
 )
 
@@ -32,7 +33,8 @@ if (($info.buildId -notlike 'CMPM-build8-squarestartup-*' -and
      $info.buildId -notlike 'CMPM-build8-squareclocktimeline-*' -and
      $info.buildId -notlike 'CMPM-build8-squaredispatch-*' -and
      $info.buildId -notlike 'CMPM-build8-squareirqsource-*' -and
-     $info.buildId -notlike 'CMPM-build8-squarecausal-*') -or
+     $info.buildId -notlike 'CMPM-build8-squarecausal-*' -and
+     $info.buildId -notlike 'CMPM-build8-squarevector7e-*') -or
     $info.executableSha256 -ne (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash) {
     throw 'This bundle is not the matching CMPM-corrected Square startup executable.'
 }
@@ -44,7 +46,8 @@ if ($SettleTrace -and $info.buildId -notlike 'CMPM-build8-squarehost-*' -and
     $info.buildId -notlike 'CMPM-build8-squareclocktimeline-*' -and
     $info.buildId -notlike 'CMPM-build8-squaredispatch-*' -and
     $info.buildId -notlike 'CMPM-build8-squareirqsource-*' -and
-    $info.buildId -notlike 'CMPM-build8-squarecausal-*') {
+    $info.buildId -notlike 'CMPM-build8-squarecausal-*' -and
+    $info.buildId -notlike 'CMPM-build8-squarevector7e-*') {
     throw 'The host-port event trace requires a squarehost, squareirqboundary or squaredmawait diagnostic build.'
 }
 if ((Get-Item -LiteralPath $RomPath).Length -ne 524288) {
@@ -54,23 +57,31 @@ if ($ClockTimeline -and (-not $SettleTrace -or $FocusMs -ne 25 -or
     ($info.buildId -notlike 'CMPM-build8-squareclocktimeline-*' -and
      $info.buildId -notlike 'CMPM-build8-squaredispatch-*' -and
      $info.buildId -notlike 'CMPM-build8-squareirqsource-*' -and
-     $info.buildId -notlike 'CMPM-build8-squarecausal-*'))) {
+     $info.buildId -notlike 'CMPM-build8-squarecausal-*' -and
+     $info.buildId -notlike 'CMPM-build8-squarevector7e-*'))) {
     throw 'ClockTimeline requires a matching diagnostic build with -SettleTrace -FocusMs 25.'
 }
 if ($DispatchTrace -and (-not $ClockTimeline -or
     ($info.buildId -notlike 'CMPM-build8-squaredispatch-*' -and
      $info.buildId -notlike 'CMPM-build8-squareirqsource-*' -and
-     $info.buildId -notlike 'CMPM-build8-squarecausal-*'))) {
+     $info.buildId -notlike 'CMPM-build8-squarecausal-*' -and
+     $info.buildId -notlike 'CMPM-build8-squarevector7e-*'))) {
     throw 'DispatchTrace requires the squaredispatch build with -ClockTimeline -SettleTrace -FocusMs 25.'
 }
 if ($IrqdTrace -and (-not $DispatchTrace -or
     ($info.buildId -notlike 'CMPM-build8-squareirqsource-*' -and
-     $info.buildId -notlike 'CMPM-build8-squarecausal-*'))) {
+     $info.buildId -notlike 'CMPM-build8-squarecausal-*' -and
+     $info.buildId -notlike 'CMPM-build8-squarevector7e-*'))) {
     throw 'IrqdTrace requires the squareirqsource build with -DispatchTrace -ClockTimeline -SettleTrace -FocusMs 25.'
 }
 if ($CausalTrace -and (-not $IrqdTrace -or
-    $info.buildId -notlike 'CMPM-build8-squarecausal-*')) {
+    ($info.buildId -notlike 'CMPM-build8-squarecausal-*' -and
+     $info.buildId -notlike 'CMPM-build8-squarevector7e-*'))) {
     throw 'CausalTrace requires the squarecausal build with -IrqdTrace -DispatchTrace -ClockTimeline -SettleTrace -FocusMs 25.'
+}
+if ($Vector7eTrace -and (-not $CausalTrace -or
+    $info.buildId -notlike 'CMPM-build8-squarevector7e-*')) {
+    throw 'Vector7eTrace requires the squarevector7e build with -CausalTrace -IrqdTrace -DispatchTrace -ClockTimeline -SettleTrace -FocusMs 25.'
 }
 
 $output = [IO.Path]::GetFullPath($OutputDirectory)
@@ -98,7 +109,8 @@ $names = @('G1_MIDINOTE', 'G1_DSP_STARTUP_WATCH_FILE', 'G1_DSP_SETTLE_FILE',
            'G1_DSP_DISPATCH_TRACE_FILE', 'G1_DSP_DISPATCH_TRACE_BEGIN',
            'G1_DSP_DISPATCH_TRACE_END', 'G1_DSP_IRQD_TRACE_FILE',
            'G1_DSP_CAUSAL_HOST_TRACE_FILE', 'G1_DSP_CAUSAL_HOST_TRACE_BEGIN',
-           'G1_DSP_CAUSAL_HOST_TRACE_END', 'G1_DSP_CAUSAL_LINK_TRACE_FILE')
+           'G1_DSP_CAUSAL_HOST_TRACE_END', 'G1_DSP_CAUSAL_LINK_TRACE_FILE',
+           'G1_DSP_VECTOR7E_TRACE_FILE')
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 $allCheckpoints = @()
@@ -143,8 +155,11 @@ try {
         if ($CausalTrace) {
             $env:G1_DSP_CAUSAL_HOST_TRACE_FILE = Join-Path $caseDir 'dsp0-host-causal.csv'
             $env:G1_DSP_CAUSAL_HOST_TRACE_BEGIN = if ($case.Name -eq 'Saw-32') { '211239000' } else { '211257000' }
-            $env:G1_DSP_CAUSAL_HOST_TRACE_END = '214700000'
+            $env:G1_DSP_CAUSAL_HOST_TRACE_END = if ($case.Name -eq 'Square-32') { '731300000' } else { '237600000' }
             $env:G1_DSP_CAUSAL_LINK_TRACE_FILE = Join-Path $caseDir 'dsp0-link-causal.csv'
+        }
+        if ($Vector7eTrace) {
+            $env:G1_DSP_VECTOR7E_TRACE_FILE = Join-Path $caseDir 'dsp0-vector7e.csv'
         }
         Remove-Item -LiteralPath Env:G1_DSP_DMA_TRACE_FILE, Env:G1_DSP_DMA_TRACE_BEGIN, Env:G1_DSP_DMA_TRACE_END, Env:G1_DSP_ESSI_TRACE_FILE -ErrorAction SilentlyContinue
         if ($SettleTrace -and ($info.buildId -like 'CMPM-build8-squareinternaldma-*' -or
@@ -209,6 +224,16 @@ try {
              (Get-Item -LiteralPath $env:G1_DSP_CAUSAL_LINK_TRACE_FILE).Length -lt 200)) {
             throw "$($case.Name) did not record bounded host and DSP0 link observations."
         }
+        if ($Vector7eTrace) {
+            $vectorFile = $env:G1_DSP_VECTOR7E_TRACE_FILE
+            $expectedVectorEvent = if ($case.Audible) { '^vector7e_service_callback,' } else { '^command_dropped,' }
+            if (-not (Test-Path -LiteralPath $vectorFile -PathType Leaf) -or
+                -not (Test-Path -LiteralPath ($vectorFile + '.writes.csv') -PathType Leaf) -or
+                -not (Select-String -LiteralPath $vectorFile -Pattern '^before_note,' -Quiet) -or
+                -not (Select-String -LiteralPath $vectorFile -Pattern $expectedVectorEvent -Quiet)) {
+                throw "$($case.Name) did not record the selected vector-7E outcome and pre-note state."
+            }
+        }
         if ($SettleTrace -and ((Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + '.blocks.csv')).Length -lt 1000)) {
             throw "$($case.Name) did not record focused DSP0 blocks."
         }
@@ -238,7 +263,8 @@ try {
                 $info.buildId -like 'CMPM-build8-squareclocktimeline-*' -or
                 $info.buildId -like 'CMPM-build8-squaredispatch-*' -or
                 $info.buildId -like 'CMPM-build8-squareirqsource-*' -or
-                $info.buildId -like 'CMPM-build8-squarecausal-*') -and
+                $info.buildId -like 'CMPM-build8-squarecausal-*' -or
+                $info.buildId -like 'CMPM-build8-squarevector7e-*') -and
                 (Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + '.host-blocks.csv')).Length -lt 1000) {
                 throw "$($case.Name) did not record word-195 interrupt boundaries."
             }
@@ -248,7 +274,8 @@ try {
                 $info.buildId -like 'CMPM-build8-squareclocktimeline-*' -or
                 $info.buildId -like 'CMPM-build8-squaredispatch-*' -or
                 $info.buildId -like 'CMPM-build8-squareirqsource-*' -or
-                $info.buildId -like 'CMPM-build8-squarecausal-*') -and
+                $info.buildId -like 'CMPM-build8-squarecausal-*' -or
+                $info.buildId -like 'CMPM-build8-squarevector7e-*') -and
                 (Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + '.host-waits.csv')).Length -lt 1000) {
                 throw "$($case.Name) did not record the word-195 host-command waits."
             }
@@ -339,6 +366,7 @@ if ($SettleTrace) {
     dispatchTrace = [bool]$DispatchTrace
     irqdTrace = [bool]$IrqdTrace
     causalTrace = [bool]$CausalTrace
+    vector7eTrace = [bool]$Vector7eTrace
     focusMs = $FocusMs
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'startup-info.json') -Encoding UTF8
 $zip = "$output.zip"

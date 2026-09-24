@@ -7,6 +7,14 @@ Older entries cite their commit by hand.
 
 ## 2026-09-24
 
+- **Bounded vector `$7E` state diagnostic (Codex; local change, not committed).**
+  Added a trace-only snapshot of the selected host-command read, `R0`, host RX
+  depth and changed DSP0 X/Y/P state, with a full pre-note comparison snapshot
+  for Saw-32, Square-32 and Square-1. The existing three-case audio gates and
+  normal 32-instruction failing run remain mandatory. Verification: opcode
+  disassembly, diff and PowerShell syntax checks; CI compilation and ROM-backed
+  state comparison remain pending.
+
 - **Bounded host-to-output causal diagnostic (Codex; local change, not committed).**
   Added opt-in DSP0 host transaction and post-note link-output records to compare
   the first divergent upload/control event with the later missing output state.

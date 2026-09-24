@@ -234,8 +234,8 @@ these rows to `dsp0-dispatch.csv` by cycle to reconstruct interrupt entry/return
 and ESSI callback selection. This traces the wrapper's request source without
 changing its timing or the pinned core's interrupt queue.
 
-The `squarecausal` build adds a bounded `dsp0-host-causal.csv` across the first
-post-divergence host transactions and a low-volume `dsp0-link-causal.csv` from
+The `squarecausal` build adds an event-only `dsp0-host-causal.csv` from the first
+post-divergence host transactions through note-on and a low-volume `dsp0-link-causal.csv` from
 the later note. Run with `-SettleTrace -FocusMs 25 -ClockTimeline -DispatchTrace
 -IrqdTrace -CausalTrace`. The host file records word/command entry and
 write/drop with DSP0 cycle, PC, transaction counts, IRQD deadline, pending and
@@ -243,6 +243,16 @@ ESSI due state. The link file records initial, periodic and first nonzero
 DSP0-to-DSP1 samples alongside `X:$1D–$1F`. Compare the host sequence by
 transaction count and value, not absolute cycle alone. The matched audio gates
 remain mandatory.
+
+The `squarevector7e` build adds `dsp0-vector7e.csv` and its `.writes.csv`
+companion for the `$7E` command following DSP0 host word count 4185. Run with
+`-SettleTrace -FocusMs 25 -ClockTimeline -DispatchTrace -IrqdTrace -CausalTrace
+-Vector7eTrace`. The probe snapshots `R0`, host RX depth and `X:$1D–$1F` at
+command entry, write/drop, vector service, the servicing JIT block's exit and
+before MIDI note-on. It records changed X/Y/P words at those checkpoints, plus
+a full 2K-word X/Y/P pre-note snapshot for persistent-state comparison. The
+runner requires a service callback in the audible cases and a dropped command
+in Square-32; the established audio gates remain unchanged.
 
 ## Overlapping-note capture
 
