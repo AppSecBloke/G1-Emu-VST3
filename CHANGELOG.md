@@ -7,6 +7,13 @@ Older entries cite their commit by hand.
 
 ## 2026-09-24
 
+- **Bounded IRQD source diagnostic (Codex; local change, not committed).**
+  Added opt-in, cycle-stamped DSP0 records for wrapper-generated vector `$16`
+  requests and actual service callbacks, correlated with the existing ESSI and
+  dispatch timeline across Saw-32, Square-32 and Square-1. The matched audio
+  acceptance gates remain in place. Verification: diff and PowerShell syntax
+  checks; CI compilation and ROM-backed comparison remain pending.
+
 - **Bounded DSP0 dispatch diagnostic (Codex; local change, not committed).**
   Added an opt-in pre/post JIT-boundary trace around the first ESSI backlog
   transition for Square-32, Square-1 and Saw-32. It records peripheral due

@@ -148,6 +148,31 @@ namespace dsp56k
 		return s;
 	}
 
+	inline void g1TraceIrqdEvent(const char* event, DSP& dsp,
+		const uint64_t previousDeadline, const uint64_t nextDeadline,
+		const uint64_t previousCount, const uint64_t nextCount,
+		const bool pendingBefore, const bool pendingAfter)
+	{
+		static const char* path = std::getenv("G1_DSP_IRQD_TRACE_FILE");
+		if(!path || !*path || !g1DispatchTraceActive(dsp.getCycles())) return;
+		static std::ofstream out(path, std::ios::out | std::ios::trunc);
+		static bool header = false;
+		if(!out) return;
+		if(!header)
+		{
+			out << "event,cycle,pc,mode,previous_deadline,next_deadline,previous_count,next_count,pending_before,pending_after,external_pending,peripheral_due,peripheral_target_clock\n";
+			header = true;
+		}
+		out << event << ',' << dsp.getCycles() << ',' << dsp.getPC().toWord() << ','
+			<< static_cast<uint32_t>(dsp.getProcessingMode()) << ','
+			<< previousDeadline << ',' << nextDeadline << ','
+			<< previousCount << ',' << nextCount << ','
+			<< pendingBefore << ',' << pendingAfter << ','
+			<< dsp.hasPendingExternalInterrupts() << ','
+			<< dsp.getPeriph(0)->isDue(dsp.getInstructionCounter(), dsp.getCycles()) << ','
+			<< dsp.getPeriph(0)->getTargetClock() << '\n';
+	}
+
 	inline void g1TraceDispatchStep(const G1DispatchSnapshot& before,
 		const G1DispatchSnapshot& after, const uint32_t cause)
 	{

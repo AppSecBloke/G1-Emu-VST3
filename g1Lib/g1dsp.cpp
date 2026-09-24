@@ -152,6 +152,10 @@ namespace g1
 			m_lastVector = _vba;
 #ifdef G1_DSP_TRACE
 			++m_dispatchServiced;
+			if(m_index == 0 && _vba == g_irqdVector)
+				dsp56k::g1TraceIrqdEvent("vector16_serviced", m_dsp,
+					m_nextIrqd, m_nextIrqd, m_irqdCount, m_irqdCount,
+					m_dsp.hasPendingInterrupts(), m_dsp.hasPendingInterrupts());
 			if(settleEventsActive())
 			{
 				const auto state = settleEventCapture();
@@ -635,6 +639,12 @@ namespace g1
 #endif
 			if(before >= m_nextIrqd)
 			{
+#ifdef G1_DSP_TRACE
+				const auto previousNextIrqd = m_nextIrqd;
+				const auto previousIrqdCount = m_irqdCount;
+				const bool pendingBeforeIrqd = m_index == 0 && dsp56k::g1DispatchTraceActive(before) ?
+					m_dsp.hasPendingInterrupts() : false;
+#endif
 				// Fixed grid (not "now + period"): IRQD does not drift against the ESSI clock, which
 				// also counts exact cycles. If it fell far behind (reload stop, boot), it re-locks
 				// without a burst of interrupts. In multiples of 864 cycles: the four DSPs share the
@@ -659,6 +669,13 @@ namespace g1
 						settleEvent("irqd_injected", g_irqdVector, irqdBefore, settleEventCapture());
 #endif
 				}
+#ifdef G1_DSP_TRACE
+				if(m_index == 0)
+					dsp56k::g1TraceIrqdEvent(m_irqdCount != previousIrqdCount ?
+						"vector16_injected" : "grid_no_injection", m_dsp,
+						previousNextIrqd, m_nextIrqd, previousIrqdCount, m_irqdCount,
+						pendingBeforeIrqd, m_dsp.hasPendingInterrupts());
+#endif
 			}
 #ifdef G1_DSP_TRACE
 			const auto dispatchBefore = traceDispatch ?

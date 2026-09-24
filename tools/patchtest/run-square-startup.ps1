@@ -4,6 +4,7 @@ param(
     [switch]$SettleTrace,
     [switch]$ClockTimeline,
     [switch]$DispatchTrace,
+    [switch]$IrqdTrace,
     [ValidateRange(0,299)][int]$FocusMs = 0
 )
 
@@ -28,7 +29,8 @@ if (($info.buildId -notlike 'CMPM-build8-squarestartup-*' -and
      $info.buildId -notlike 'CMPM-build8-squareinternaldma-*' -and
      $info.buildId -notlike 'CMPM-build8-squareessiproducer-*' -and
      $info.buildId -notlike 'CMPM-build8-squareclocktimeline-*' -and
-     $info.buildId -notlike 'CMPM-build8-squaredispatch-*') -or
+     $info.buildId -notlike 'CMPM-build8-squaredispatch-*' -and
+     $info.buildId -notlike 'CMPM-build8-squareirqsource-*') -or
     $info.executableSha256 -ne (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash) {
     throw 'This bundle is not the matching CMPM-corrected Square startup executable.'
 }
@@ -38,7 +40,8 @@ if ($SettleTrace -and $info.buildId -notlike 'CMPM-build8-squarehost-*' -and
     $info.buildId -notlike 'CMPM-build8-squareinternaldma-*' -and
     $info.buildId -notlike 'CMPM-build8-squareessiproducer-*' -and
     $info.buildId -notlike 'CMPM-build8-squareclocktimeline-*' -and
-    $info.buildId -notlike 'CMPM-build8-squaredispatch-*') {
+    $info.buildId -notlike 'CMPM-build8-squaredispatch-*' -and
+    $info.buildId -notlike 'CMPM-build8-squareirqsource-*') {
     throw 'The host-port event trace requires a squarehost, squareirqboundary or squaredmawait diagnostic build.'
 }
 if ((Get-Item -LiteralPath $RomPath).Length -ne 524288) {
@@ -46,12 +49,18 @@ if ((Get-Item -LiteralPath $RomPath).Length -ne 524288) {
 }
 if ($ClockTimeline -and (-not $SettleTrace -or $FocusMs -ne 25 -or
     ($info.buildId -notlike 'CMPM-build8-squareclocktimeline-*' -and
-     $info.buildId -notlike 'CMPM-build8-squaredispatch-*'))) {
+     $info.buildId -notlike 'CMPM-build8-squaredispatch-*' -and
+     $info.buildId -notlike 'CMPM-build8-squareirqsource-*'))) {
     throw 'ClockTimeline requires a matching diagnostic build with -SettleTrace -FocusMs 25.'
 }
 if ($DispatchTrace -and (-not $ClockTimeline -or
-    $info.buildId -notlike 'CMPM-build8-squaredispatch-*')) {
+    ($info.buildId -notlike 'CMPM-build8-squaredispatch-*' -and
+     $info.buildId -notlike 'CMPM-build8-squareirqsource-*'))) {
     throw 'DispatchTrace requires the squaredispatch build with -ClockTimeline -SettleTrace -FocusMs 25.'
+}
+if ($IrqdTrace -and (-not $DispatchTrace -or
+    $info.buildId -notlike 'CMPM-build8-squareirqsource-*')) {
+    throw 'IrqdTrace requires the squareirqsource build with -DispatchTrace -ClockTimeline -SettleTrace -FocusMs 25.'
 }
 
 $output = [IO.Path]::GetFullPath($OutputDirectory)
@@ -77,7 +86,7 @@ $names = @('G1_MIDINOTE', 'G1_DSP_STARTUP_WATCH_FILE', 'G1_DSP_SETTLE_FILE',
            'G1_DSP_ESSI_TRACE_FILE', 'G1_DSP_ESSI_TIMELINE_FILE',
            'G1_DSP_ESSI_TIMELINE_BEGIN', 'G1_DSP_ESSI_TIMELINE_END',
            'G1_DSP_DISPATCH_TRACE_FILE', 'G1_DSP_DISPATCH_TRACE_BEGIN',
-           'G1_DSP_DISPATCH_TRACE_END')
+           'G1_DSP_DISPATCH_TRACE_END', 'G1_DSP_IRQD_TRACE_FILE')
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 $allCheckpoints = @()
@@ -115,6 +124,9 @@ try {
                 $env:G1_DSP_DISPATCH_TRACE_BEGIN = '211254700'
                 $env:G1_DSP_DISPATCH_TRACE_END = '211263700'
             }
+        }
+        if ($IrqdTrace) {
+            $env:G1_DSP_IRQD_TRACE_FILE = Join-Path $caseDir 'dsp0-irqd-events.csv'
         }
         Remove-Item -LiteralPath Env:G1_DSP_DMA_TRACE_FILE, Env:G1_DSP_DMA_TRACE_BEGIN, Env:G1_DSP_DMA_TRACE_END, Env:G1_DSP_ESSI_TRACE_FILE -ErrorAction SilentlyContinue
         if ($SettleTrace -and ($info.buildId -like 'CMPM-build8-squareinternaldma-*' -or
@@ -167,6 +179,11 @@ try {
              (Get-Item -LiteralPath $env:G1_DSP_DISPATCH_TRACE_FILE).Length -lt 1000)) {
             throw "$($case.Name) did not record the bounded DSP0 dispatch window."
         }
+        if ($IrqdTrace -and
+            ((-not (Test-Path -LiteralPath $env:G1_DSP_IRQD_TRACE_FILE -PathType Leaf)) -or
+             (Get-Item -LiteralPath $env:G1_DSP_IRQD_TRACE_FILE).Length -lt 200)) {
+            throw "$($case.Name) did not record the bounded DSP0 IRQD events."
+        }
         if ($SettleTrace -and ((Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + '.blocks.csv')).Length -lt 1000)) {
             throw "$($case.Name) did not record focused DSP0 blocks."
         }
@@ -194,7 +211,8 @@ try {
                 $info.buildId -like 'CMPM-build8-squareinternaldma-*' -or
                 $info.buildId -like 'CMPM-build8-squareessiproducer-*' -or
                 $info.buildId -like 'CMPM-build8-squareclocktimeline-*' -or
-                $info.buildId -like 'CMPM-build8-squaredispatch-*') -and
+                $info.buildId -like 'CMPM-build8-squaredispatch-*' -or
+                $info.buildId -like 'CMPM-build8-squareirqsource-*') -and
                 (Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + '.host-blocks.csv')).Length -lt 1000) {
                 throw "$($case.Name) did not record word-195 interrupt boundaries."
             }
@@ -202,7 +220,8 @@ try {
                 $info.buildId -like 'CMPM-build8-squareinternaldma-*' -or
                 $info.buildId -like 'CMPM-build8-squareessiproducer-*' -or
                 $info.buildId -like 'CMPM-build8-squareclocktimeline-*' -or
-                $info.buildId -like 'CMPM-build8-squaredispatch-*') -and
+                $info.buildId -like 'CMPM-build8-squaredispatch-*' -or
+                $info.buildId -like 'CMPM-build8-squareirqsource-*') -and
                 (Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + '.host-waits.csv')).Length -lt 1000) {
                 throw "$($case.Name) did not record the word-195 host-command waits."
             }
@@ -291,6 +310,7 @@ if ($SettleTrace) {
     settleTrace = [bool]$SettleTrace
     clockTimeline = [bool]$ClockTimeline
     dispatchTrace = [bool]$DispatchTrace
+    irqdTrace = [bool]$IrqdTrace
     focusMs = $FocusMs
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'startup-info.json') -Encoding UTF8
 $zip = "$output.zip"

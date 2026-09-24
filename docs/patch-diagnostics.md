@@ -225,6 +225,15 @@ internal interrupt queue depth through a read-only public API; the trace uses
 the available pending flags and actual serviced-vector callback. The existing
 Saw-32/Square-32/Square-1 audio checks still gate the package.
 
+The `squareirqsource` build adds `dsp0-irqd-events.csv` for each case. Run with
+`-SettleTrace -FocusMs 25 -ClockTimeline -DispatchTrace -IrqdTrace`. The bounded
+event file records each wrapper-generated vector `$16` request at its exact DSP0
+cycle and PC, the previous and next 864-cycle IRQD deadlines, request counts and
+pending state before/after injection, plus actual `$16` service callbacks. Join
+these rows to `dsp0-dispatch.csv` by cycle to reconstruct interrupt entry/return
+and ESSI callback selection. This traces the wrapper's request source without
+changing its timing or the pinned core's interrupt queue.
+
 ## Overlapping-note capture
 
 The same bundle can capture two overlapping notes through the G1 MIDI IN path. Run this
