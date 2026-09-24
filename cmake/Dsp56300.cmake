@@ -134,15 +134,9 @@ if(G1_DSP_TRACE)
 	g1_dsp_replace(esaiclock.cpp
 		"const auto diff = ic - m_lastClock;"
 		"const auto diff = ic - m_lastClock;\n\tg1TraceEssiClock(\"clock_enter\", m_periph, ic, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, 0, -1, -1, -1, 0, 0, m_hasFineEsais, m_nextCycleDeadline);")
-	file(READ "${g1_dsp_prepare}/esaiclock.cpp" g1_essi_clock_source)
-	set(g1_essi_schedule_anchor "m_nextCycleDeadline = delay;")
-	string(FIND "${g1_essi_clock_source}" "${g1_essi_schedule_anchor}" g1_essi_schedule_match)
-	if(g1_essi_schedule_match EQUAL -1)
-		set(g1_essi_schedule_anchor "m_nextCycleDeadline=delay;")
-	endif()
 	g1_dsp_replace(esaiclock.cpp
-		"${g1_essi_schedule_anchor}"
-		"${g1_essi_schedule_anchor}\n\t\tg1TraceEssiClock(\"clock_schedule\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, 0, -1, -1, -1, 0, 0, m_hasFineEsais, m_nextCycleDeadline);")
+		"m_nextCycleDeadline = _delay;"
+		"m_nextCycleDeadline = _delay;\n\t\t\tg1TraceEssiClock(\"clock_schedule\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, 0, -1, -1, -1, 0, 0, m_hasFineEsais, m_nextCycleDeadline);")
 	g1_dsp_replace(esaiclock.cpp
 		"e.fineLastClock += e.finePeriod;"
 		"g1TraceEssiClock(\"fine_tick_pre\", m_periph, ic, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, reinterpret_cast<uintptr_t>(e.esai), e.rx.counter, e.rx.divider, -1, e.finePeriod, e.fineLastClock, m_hasFineEsais, m_nextCycleDeadline);\n\t\t\t\te.fineLastClock += e.finePeriod;\n\t\t\t\tg1TraceEssiClock(\"fine_tick_post\", m_periph, ic, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, reinterpret_cast<uintptr_t>(e.esai), e.rx.counter, e.rx.divider, -1, e.finePeriod, e.fineLastClock, m_hasFineEsais, m_nextCycleDeadline);")

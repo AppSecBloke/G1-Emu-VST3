@@ -7,6 +7,12 @@ Older entries cite their commit by hand.
 
 ## 2026-09-24
 
+- **ESSI clock timeline configure correction (Codex; local change, not committed).**
+  Fixed the diagnostic overlay's scheduling assignment anchor to match the pinned
+  dsp56300 source (`_delay`). Actions run 35986477195 stopped at this CMake
+  replacement before compilation. Verified the exact pinned source and reviewed
+  the resulting diff; CI compilation and ROM-backed tracing remain pending.
+
 - **DSP0 ESSI pre-divergence timeline (Codex; local change, not committed).**
   Added an opt-in, threshold-sampled DSP0 clock timeline from patch upload through
   host word 195, with nearby JIT block boundaries. The diagnostic bundle keeps
