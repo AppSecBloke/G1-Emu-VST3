@@ -57,6 +57,24 @@ namespace dsp56k
 		return state;
 	}
 
+	inline void g1FineDrainEvent(const char* event, const DSP& dsp,
+		const uint32_t remaining, const uint32_t blockLimit)
+	{
+		static const char* path = std::getenv("G1_DSP_FINE_DRAIN_FILE");
+		if(!path || !*path) return;
+		static std::ofstream out(path, std::ios::out | std::ios::trunc);
+		static bool header = false;
+		if(!out) return;
+		if(!header)
+		{
+			out << "event,cycle,pc,instructions,mode,pending,remaining,block_limit\n";
+			header = true;
+		}
+		out << event << ',' << dsp.getCycles() << ',' << dsp.getPC().toWord()
+			<< ',' << dsp.getInstructionCounter() << ',' << static_cast<uint32_t>(dsp.getProcessingMode())
+			<< ',' << dsp.hasPendingInterrupts() << ',' << remaining << ',' << blockLimit << '\n';
+	}
+
 	inline bool g1CallbackWindowActive(const DSP& dsp)
 	{
 		static const char* path = std::getenv("G1_DSP_CALLBACK_WINDOW_FILE");

@@ -7,6 +7,15 @@ Older entries cite their commit by hand.
 
 ## 2026-09-24
 
+- **Bounded seven-interrupt JIT dispatch experiment (Codex; local change, not committed).**
+  Added an opt-in diagnostic-core overlay that rebuilds cached DSP0 JIT blocks
+  at one-instruction granularity only after the aligned ESSI callback has queued
+  seven `$1E` interrupts, then restores normal 32-instruction blocks after their
+  natural service and suppression exit. Added a four-case ROM-backed runner and
+  distinct CI bundle ID; no production DSP or VST behaviour changed.
+  Verification: source/diff and PowerShell syntax checks; CI compilation and
+  local ROM-backed causal comparison remain pending.
+
 - **Bounded DSP0 callback/interrupt diagnostic (Codex; local change, not committed).**
   Added diagnostic-overlay-only callback entry/exit snapshots before JIT execution,
   ordered ESSI1 receive/base-clock and DMA3 request records, and read-only

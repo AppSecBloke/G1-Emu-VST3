@@ -34,7 +34,7 @@ if (($info.buildId -notlike 'CMPM-build8-squarestartup-*' -and
      $info.buildId -notlike 'CMPM-build8-squaredispatch-*' -and
      $info.buildId -notlike 'CMPM-build8-squareirqsource-*' -and
      $info.buildId -notlike 'CMPM-build8-squarecausal-*' -and
-     ($info.buildId -notlike 'CMPM-build8-squarevector7e-*' -and $info.buildId -notlike 'CMPM-build8-squarecallback-*')) -or
+     ($info.buildId -notlike 'CMPM-build8-squarevector7e-*' -and $info.buildId -notlike 'CMPM-build8-squarecallback-*' -and $info.buildId -notlike 'CMPM-build8-squarefinedrain-*')) -or
     $info.executableSha256 -ne (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash) {
     throw 'This bundle is not the matching CMPM-corrected Square startup executable.'
 }

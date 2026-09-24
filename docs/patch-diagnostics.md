@@ -271,6 +271,33 @@ DSP0 cycles 211,258,184–368; the fine clock is read through a diagnostic-only
 accessor without an earlier timeline capture. The runner verifies the unchanged silent
 Square-32 / audible Square-1 result before packaging. It does not include a ROM.
 
+## Seven-interrupt dispatch-granularity experiment
+
+The `squarefinedrain` diagnostic bundle keeps the 32-instruction JIT setting until
+the aligned DSP0 ESSI callback exits at cycle 211,258,189 with precisely seven
+queued `$1E` interrupts. Only in the opt-in experimental Square run, it rebuilds
+the JIT cache with a one-instruction limit for the natural interrupt drain. After
+the seventh `$1E` handler and the normal suppression transition, it restores the
+32-instruction setting and cache. No DSP instruction, interrupt, peripheral,
+host-port or IRQD state is changed by the intervention. Earlier executions of
+the same code use their original 32-instruction blocks.
+
+Run the extracted bundle with your ROM:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run-square-fine-drain.ps1 -RomPath 'C:\path\NORD-MODULAR-RACK-VER-3.03.BIN'
+```
+
+The ZIP contains Saw-32, baseline Square-32, experimental Square-32 and Square-1
+results. `comparison.csv` reports the first pending-free ESSI dispatch before the
+IRQD grid, audio result and DSP0 P-memory hash. The experimental
+`dsp0-fine-drain.csv` must contain one arm, seven natural clears and one restore;
+the runner fails if it does not. Bounded dispatch/callback records and existing
+host, `$7E`, link, startup and memory dumps permit downstream comparison. The
+experimental audio result is deliberately not pre-gated. The baseline controls
+must still reproduce Saw-32 audible, Square-32 silent and Square-1 audible.
+The ROM remains local and is not packaged.
+
 ## Overlapping-note capture
 
 The same bundle can capture two overlapping notes through the G1 MIDI IN path. Run this

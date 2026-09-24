@@ -123,13 +123,16 @@ if(G1_DSP_TRACE)
 	# These calls and the queue accessor exist only in the diagnostic build copy.
 	g1_dsp_replace(dsp.h
 		"void\texecInterrupts\t\t\t\t\t();"
-		"void\tg1TraceCallbackWindowState(const char* event, TWord vector = 0, int result = -1);\n\t\tvoid\texecInterrupts\t\t\t\t\t();")
+		"void\tg1TraceCallbackWindowState(const char* event, TWord vector = 0, int result = -1);\n\t\tvoid\tg1MaybeArmFineDrain();\n\t\tvoid\tg1FineDrainInterruptCleared(TWord vector);\n\t\tvoid\tg1MaybeEndFineDrain();\n\t\tvoid\texecInterrupts\t\t\t\t\t();")
+	g1_dsp_replace(dsp.h
+		"bool\t\t\t\t\t\t\tm_invalidPCReported = false;"
+		"bool\t\t\t\t\t\t\tm_invalidPCReported = false;\n\t\tbool\t\t\t\t\t\t\tm_g1FineDrainActive = false;\n\t\tuint32_t\t\t\t\t\t\tm_g1FineDrainRemaining = 0;")
 	g1_dsp_replace(dsp.h
 		"const auto delayA = static_cast<Ta*>(perif[0])->exec();"
 		"g1TraceCallbackWindowState(\"callback_entry\");\n\t\t\tconst auto delayA = static_cast<Ta*>(perif[0])->exec();")
 	g1_dsp_replace(dsp.h
 		"processExternalInterrupts();\n\t\t}"
-		"processExternalInterrupts();\n\t\t\tg1TraceCallbackWindowState(\"callback_exit\");\n\t\t}")
+		"processExternalInterrupts();\n\t\t\tg1TraceCallbackWindowState(\"callback_exit\");\n\t\t\tg1MaybeArmFineDrain();\n\t\t}")
 	g1_dsp_replace(esaiclock.h
 		"auto getLastClock() const { return m_lastClock; }"
 		"auto getLastClock() const { return m_lastClock; }\n\t\tuint64_t g1TraceFineClock(const Esxi* esxi) const\n\t\t{\n\t\t\tfor(const auto& entry : m_esais)\n\t\t\t\tif(entry.esai == esxi) return entry.fineLastClock;\n\t\t\treturn 0;\n\t\t}")
@@ -138,7 +141,54 @@ if(G1_DSP_TRACE)
 		"#include \"opcodecycles.h\"\n#include \"peripherals.h\"\n#include \"g1_essi_trace.h\"")
 	g1_dsp_replace(dsp.cpp
 		"void DSP::execInterrupts()"
-		"void DSP::g1TraceCallbackWindowState(const char* event, TWord vector, int result)\n\t{\n\t\tg1CallbackWindowSnapshot(event, *this, m_pendingInterrupts, m_pendingExternalInterrupts, vector, result);\n\t}\n\n\tvoid DSP::execInterrupts()")
+		[=[void DSP::g1TraceCallbackWindowState(const char* event, TWord vector, int result)
+	{
+		g1CallbackWindowSnapshot(event, *this, m_pendingInterrupts, m_pendingExternalInterrupts, vector, result);
+	}
+
+	// The callback has returned and no JIT block is executing. Rebuild the cache
+	// only for this exact DSP0 runtime occurrence; earlier compiled blocks ran at 32.
+	void DSP::g1MaybeArmFineDrain()
+	{
+		static const char* enabled = std::getenv("G1_DSP_FINE_DRAIN_FILE");
+		if(!enabled || !*enabled || m_g1FineDrainActive || m_cycles != 211258189 ||
+			getPC().toWord() != 0x16e || m_instructions != 89708861 ||
+			g1EssiTimeline().target.load(std::memory_order_acquire) != reinterpret_cast<uintptr_t>(this) ||
+			m_processingMode != Default || m_pendingInterrupts.size() != 7)
+			return;
+		for(size_t i = 0; i < 7; ++i)
+			if(m_pendingInterrupts[i] != 0x1e) return;
+		m_g1FineDrainActive = true;
+		m_g1FineDrainRemaining = 7;
+		auto config = m_jit.getConfig();
+		config.maxInstructionsPerBlock = 1;
+		m_jit.setConfig(config);
+		m_jit.destroyAllBlocks();
+		g1FineDrainEvent("arm", *this, m_g1FineDrainRemaining, 1);
+	}
+
+	void DSP::g1FineDrainInterruptCleared(TWord vector)
+	{
+		if(!m_g1FineDrainActive || vector != 0x1e || !m_g1FineDrainRemaining) return;
+		--m_g1FineDrainRemaining;
+		g1FineDrainEvent("clear", *this, m_g1FineDrainRemaining, 1);
+	}
+
+	// The last fast handler has completed and the ordinary suppression transition
+	// has returned to the dispatcher. Restore cached 32-instruction blocks here.
+	void DSP::g1MaybeEndFineDrain()
+	{
+		if(!m_g1FineDrainActive || m_g1FineDrainRemaining ||
+			m_processingMode != Default) return;
+		auto config = m_jit.getConfig();
+		config.maxInstructionsPerBlock = 32;
+		m_jit.setConfig(config);
+		m_jit.destroyAllBlocks();
+		m_g1FineDrainActive = false;
+		g1FineDrainEvent("restore", *this, 0, 32);
+	}
+
+	void DSP::execInterrupts()]=])
 	g1_dsp_replace(dsp.cpp
 		"m_pendingInterrupts.push_back({_interruptVectorAddress});"
 		"g1TraceCallbackWindowState(\"interrupt_enqueue_pre\", _interruptVectorAddress);\n\t\tm_pendingInterrupts.push_back({_interruptVectorAddress});\n\t\tg1TraceCallbackWindowState(\"interrupt_enqueue_post\", _interruptVectorAddress);")
@@ -150,7 +200,10 @@ if(G1_DSP_TRACE)
 		"if(isInterruptMasked(vba))\n\t\t{\n\t\t\tg1TraceCallbackWindowState(\"interrupt_masked\", vba);")
 	g1_dsp_replace(dsp.cpp
 		"m_processingMode = FastInterrupt;\n\t\t\tm_pendingInterrupts.pop_front();"
-		"m_processingMode = FastInterrupt;\n\t\t\tm_pendingInterrupts.pop_front();\n\t\t\tg1TraceCallbackWindowState(\"interrupt_clear\", vba);")
+		"m_processingMode = FastInterrupt;\n\t\t\tm_pendingInterrupts.pop_front();\n\t\t\tg1TraceCallbackWindowState(\"interrupt_clear\", vba);\n\t\t\tg1FineDrainInterruptCleared(vba);")
+	g1_dsp_replace(dsp.cpp
+		"void DSP::execDefaultPreventInterrupt()\n\t{\n\t\tm_processingMode = Default;"
+		"void DSP::execDefaultPreventInterrupt()\n\t{\n\t\tm_processingMode = Default;\n\t\tg1MaybeEndFineDrain();")
 	g1_dsp_replace(dsp.cpp
 		"m_processingMode = Default;\n\t\t\t\tm_pendingInterrupts.pop_front();"
 		"m_processingMode = Default;\n\t\t\t\tm_pendingInterrupts.pop_front();\n\t\t\t\tg1TraceCallbackWindowState(\"interrupt_custom_clear\", interrupt);")
