@@ -119,6 +119,87 @@ g1_dsp_replace(dma.cpp
 
 # Observe ESSI clock catch-up, DMA3 requests and vector-$1E injection only in diagnostic builds.
 if(G1_DSP_TRACE)
+	# Capture JIT-resident registers before and after only the two relevant
+	# straight-line producer ranges. The generated guard skips the probe outside
+	# the post-note cycle window; no DSP register or simulated cycle is changed.
+	g1_dsp_replace(jitblock.h
+		"void markPeripheralAccess();"
+		"void markPeripheralAccess();\n\t\tvoid g1TraceVoiceOp(TWord pc, bool after);")
+	g1_dsp_replace(jitblock.cpp
+		"#include \"opcodecycles.h\""
+		"#include \"opcodecycles.h\"\n#include \"g1_output_trace.h\"")
+	g1_dsp_replace(jitblock.cpp
+		"void JitBlock::markPeripheralAccess()"
+		[=[void callG1VoiceTrace(DSP* dsp, TWord pc, TWord after)
+	{
+		g1VoiceTraceEmit(*dsp, pc, after != 0);
+	}
+
+	void JitBlock::g1TraceVoiceOp(TWord pc, bool after)
+	{
+		if(!g1VoiceTracePc(pc) || !std::getenv("G1_DSP_VOICE_FILE") ||
+			g1OutputTrace().target.load(std::memory_order_acquire) != &m_dsp) return;
+
+		const SkipLabel skip(m_asm);
+		{
+			const RegScratch pointer(*this), cycle(*this), bound(*this);
+			m_asm.mov(r64(cycle), m_mem.makePtr(pointer, &m_dsp.getCycles(), sizeof(uint64_t)));
+			m_asm.mov(r64(bound), asmjit::Imm(236970000));
+			m_asm.cmp(r64(bound), r64(cycle));
+			m_asm.jg(skip.get());
+			m_asm.mov(r64(bound), asmjit::Imm(237070000));
+			m_asm.cmp(r64(cycle), r64(bound));
+			m_asm.jg(skip.get());
+		}
+
+		auto& snapshot = g1VoiceTrace().regs;
+		{
+			const auto value = m_dspRegs.getALU(0);
+			m_mem.mov(snapshot.a, value.get());
+		}
+		{
+			const auto value = m_dspRegs.getALU(1);
+			m_mem.mov(snapshot.b, value.get());
+		}
+		{
+			const RegGP value(*this);
+			m_dspRegPool.getXY0(r32(value), 0);
+			m_mem.mov(snapshot.x0, value.get());
+			m_dspRegPool.getXY1(r32(value), 0);
+			m_mem.mov(snapshot.x1, value.get());
+			m_dspRegPool.getXY0(r32(value), 1);
+			m_mem.mov(snapshot.y0, value.get());
+			m_dspRegPool.getXY1(r32(value), 1);
+			m_mem.mov(snapshot.y1, value.get());
+		}
+		{
+			const auto value = m_dspRegs.getR(1);
+			m_mem.mov(snapshot.r1, value.get());
+		}
+		{
+			const auto value = m_dspRegs.getR(3);
+			m_mem.mov(snapshot.r3, value.get());
+		}
+		{
+			const auto value = m_dspRegs.getR(4);
+			m_mem.mov(snapshot.r4, value.get());
+		}
+		{
+			DspValue value(*this);
+			m_dspRegs.getN(value, 1);
+			m_mem.mov(snapshot.n1, value.get());
+		}
+		const FuncArg arg0(*this, 0), arg1(*this, 1), arg2(*this, 2);
+		m_mem.makeDspPtr(arg0);
+		m_asm.mov(r32(arg1), asmjit::Imm(pc));
+		m_asm.mov(r32(arg2), asmjit::Imm(after ? 1 : 0));
+		m_stack.call(asmjit::func_as_ptr(&callG1VoiceTrace));
+	}
+
+	void JitBlock::markPeripheralAccess()]=])
+	g1_dsp_replace(jitblock.cpp
+		"ops.emit(opPC, opA, opB);"
+		"g1TraceVoiceOp(opPC, false);\n\t\t\tops.emit(opPC, opA, opB);\n\t\t\tg1TraceVoiceOp(opPC, true);")
 	# Observe direct JIT Y writes at their original store site. The observer reads
 	# the previous value and returns; the existing native store still executes.
 	g1_dsp_replace(jitmem.h
@@ -350,7 +431,7 @@ if(g1_cmpm_source_index EQUAL -1)
 	message(FATAL_ERROR "CMPM correction is not in the dsp56kEmu source list")
 endif()
 if(G1_DSP_TRACE)
-	foreach(name IN ITEMS dsp.cpp dma.cpp esaiclock.cpp jitmem.cpp jitops.cpp)
+	foreach(name IN ITEMS dsp.cpp dma.cpp esaiclock.cpp jitmem.cpp jitops.cpp jitblock.cpp)
 		list(FIND g1_dsp_build_sources "${g1_dsp_overlay}/${name}" g1_trace_source_index)
 		if(g1_trace_source_index EQUAL -1)
 			message(FATAL_ERROR "${name} diagnostic overlay is not in the dsp56kEmu source list")

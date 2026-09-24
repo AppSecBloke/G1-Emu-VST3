@@ -320,6 +320,16 @@ If observation itself changes either audio result, the runner fails and leaves
 the partial files for review. The overlay only calls a read-only observer before
 the original Y store; it does not replace the store or alter simulated cycles.
 
+The later `squarevoice` bundle uses the same command and audio/P-memory gates.
+It adds `dsp0-voice-producer.csv` for the two straight-line producer regions
+P:`$023E–$0244` and P:`$0663–$0672`, plus P:`$0652` (the write to X:`$24`).
+Each pre/post instruction record contains live JIT A/B and X0/X1/Y0/Y1,
+address registers and their source-memory reads, X:`$24–$26`, and the current
+output-write sequence. P:`$0244/$0652/$0669` post records include the X write's
+old and new value. The probe runs only in the post-note cycle window and
+does not add an emulated instruction or cycle. Compare the occurrence ending
+at output write 437, not records that merely happen at similar absolute cycles.
+
 ## Overlapping-note capture
 
 The same bundle can capture two overlapping notes through the G1 MIDI IN path. Run this

@@ -16,7 +16,7 @@ foreach ($path in @($RomPath, $exe, $modules, $fixture, $buildInfo)) {
     }
 }
 $info = Get-Content -LiteralPath $buildInfo -Raw | ConvertFrom-Json
-if ($info.buildId -notlike 'CMPM-build8-squareoutput-*' -or
+if ($info.buildId -notmatch '^CMPM-build8-square(output|voice)-' -or
     $info.executableSha256 -ne (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash) {
     throw 'This bundle is not the bounded Square output diagnostic executable.'
 }
@@ -39,7 +39,7 @@ $source.Replace($old, '2 7 10 64 64 64 64 3 0 0 0 0 0') |
 
 $names = @('G1_MIDINOTE', 'G1_DSP_WATCH_BLOCKSIZE', 'G1_DSP_FINE_DRAIN_FILE',
            'G1_DSP_OUTPUT_WRITES_FILE', 'G1_DSP_OUTPUT_LINK_FILE',
-           'G1_DSP_OUTPUT_BEGIN', 'G1_DSP_OUTPUT_END', 'G1_DUMP',
+           'G1_DSP_OUTPUT_BEGIN', 'G1_DSP_OUTPUT_END', 'G1_DSP_VOICE_FILE', 'G1_DUMP',
            'G1_DSP_CAUSAL_HOST_TRACE_FILE', 'G1_DSP_CAUSAL_LINK_TRACE_FILE',
            'G1_DSP_STARTUP_WATCH_FILE', 'G1_DSP_CALLBACK_WINDOW_FILE',
            'G1_DSP_DISPATCH_TRACE_FILE', 'G1_DSP_IRQD_TRACE_FILE',
@@ -62,6 +62,9 @@ try {
         $env:G1_DSP_OUTPUT_END = '237070000'
         $env:G1_DSP_OUTPUT_WRITES_FILE = Join-Path $caseDir 'dsp0-output-writes.csv'
         $env:G1_DSP_OUTPUT_LINK_FILE = Join-Path $caseDir 'dsp0-output-link.csv'
+        if ($info.buildId -like 'CMPM-build8-squarevoice-*') {
+            $env:G1_DSP_VOICE_FILE = Join-Path $caseDir 'dsp0-voice-producer.csv'
+        }
         $env:G1_DUMP = $dumpDir
         if ($case.BlockSize -eq 1) { $env:G1_DSP_WATCH_BLOCKSIZE = '1' }
         else { Remove-Item -LiteralPath Env:G1_DSP_WATCH_BLOCKSIZE -ErrorAction SilentlyContinue }
@@ -92,6 +95,19 @@ try {
         if (-not $writes.Count -or -not $links.Count) {
             throw "$($case.Name) produced no bounded output-path records; partial data is in $output"
         }
+        $targetWrite = $writes | Where-Object sequence -eq '437' | Select-Object -First 1
+        if ($null -eq $targetWrite -or $targetWrite.instruction_pc -ne '1650' -or
+            $targetWrite.address -ne '1760') {
+            throw "$($case.Name) no longer has the aligned output write #437; partial data is in $output"
+        }
+        if ($info.buildId -like 'CMPM-build8-squarevoice-*') {
+            $voice = @(Import-Csv -LiteralPath $env:G1_DSP_VOICE_FILE)
+            if (-not $voice.Count -or
+                -not @($voice | Where-Object { $_.pc -eq '580' -and $_.phase -eq 'post' }).Count -or
+                -not @($voice | Where-Object { $_.pc -eq '1650' -and $_.phase -eq 'pre' }).Count) {
+                throw "$($case.Name) lacks the bounded producer trace; partial data is in $output"
+            }
+        }
         $firstNonzeroWrite = $writes | Where-Object { [long]$_.new -ne 0 } | Select-Object -First 1
         $firstNonzeroLink = $links | Where-Object { [long]$_.link0 -ne 0 -or [long]$_.link1 -ne 0 } | Select-Object -First 1
         $summary += [pscustomobject]@{
@@ -104,6 +120,7 @@ try {
             firstNonzeroWriteSequence = if ($null -ne $firstNonzeroWrite) { $firstNonzeroWrite.sequence } else { '' }
             firstNonzeroWritePc = if ($null -ne $firstNonzeroWrite) { $firstNonzeroWrite.instruction_pc } else { '' }
             firstNonzeroLinkCycle = if ($null -ne $firstNonzeroLink) { $firstNonzeroLink.cycle } else { '' }
+            targetWrite437Value = $targetWrite.new
             dsp0PMemorySha256 = (Get-FileHash -LiteralPath (Join-Path $dumpDir 'dsp0_p.hex') -Algorithm SHA256).Hash
         }
     }

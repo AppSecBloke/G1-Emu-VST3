@@ -7,6 +7,14 @@ Older entries cite their commit by hand.
 
 ## 2026-09-24
 
+- **Bounded Square voice-producer trace (Codex; local change, not committed).**
+  Added diagnostic-only pre/post JIT register and source-memory observations
+  around P:`$023E–$0244` and P:`$0663–$0672`, with X:`$24–$26` write values and
+  logical output-write correlation. Kept the seven-interrupt fine-drain
+  experiment and silent/audible control gates. Verification: pinned-source
+  overlay-anchor review, PowerShell syntax and diff checks; CI compilation and
+  local ROM-backed comparison remain pending.
+
 - **Bounded post-note Square output-path diagnostic (Codex; local change, not committed).**
   Added diagnostic-only JIT/DMA observers for DSP0 writes to the alternating
   Y output cells, per-sample link snapshots and a two-case Square runner.
