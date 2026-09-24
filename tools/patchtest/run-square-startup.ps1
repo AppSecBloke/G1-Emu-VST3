@@ -34,7 +34,7 @@ if (($info.buildId -notlike 'CMPM-build8-squarestartup-*' -and
      $info.buildId -notlike 'CMPM-build8-squaredispatch-*' -and
      $info.buildId -notlike 'CMPM-build8-squareirqsource-*' -and
      $info.buildId -notlike 'CMPM-build8-squarecausal-*' -and
-     $info.buildId -notlike 'CMPM-build8-squarevector7e-*') -or
+     ($info.buildId -notlike 'CMPM-build8-squarevector7e-*' -and $info.buildId -notlike 'CMPM-build8-squarecallback-*')) -or
     $info.executableSha256 -ne (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash) {
     throw 'This bundle is not the matching CMPM-corrected Square startup executable.'
 }
@@ -47,7 +47,7 @@ if ($SettleTrace -and $info.buildId -notlike 'CMPM-build8-squarehost-*' -and
     $info.buildId -notlike 'CMPM-build8-squaredispatch-*' -and
     $info.buildId -notlike 'CMPM-build8-squareirqsource-*' -and
     $info.buildId -notlike 'CMPM-build8-squarecausal-*' -and
-    $info.buildId -notlike 'CMPM-build8-squarevector7e-*') {
+    ($info.buildId -notlike 'CMPM-build8-squarevector7e-*' -and $info.buildId -notlike 'CMPM-build8-squarecallback-*')) {
     throw 'The host-port event trace requires a squarehost, squareirqboundary or squaredmawait diagnostic build.'
 }
 if ((Get-Item -LiteralPath $RomPath).Length -ne 524288) {
@@ -58,29 +58,29 @@ if ($ClockTimeline -and (-not $SettleTrace -or $FocusMs -ne 25 -or
      $info.buildId -notlike 'CMPM-build8-squaredispatch-*' -and
      $info.buildId -notlike 'CMPM-build8-squareirqsource-*' -and
      $info.buildId -notlike 'CMPM-build8-squarecausal-*' -and
-     $info.buildId -notlike 'CMPM-build8-squarevector7e-*'))) {
+     ($info.buildId -notlike 'CMPM-build8-squarevector7e-*' -and $info.buildId -notlike 'CMPM-build8-squarecallback-*')))) {
     throw 'ClockTimeline requires a matching diagnostic build with -SettleTrace -FocusMs 25.'
 }
 if ($DispatchTrace -and (-not $ClockTimeline -or
     ($info.buildId -notlike 'CMPM-build8-squaredispatch-*' -and
      $info.buildId -notlike 'CMPM-build8-squareirqsource-*' -and
      $info.buildId -notlike 'CMPM-build8-squarecausal-*' -and
-     $info.buildId -notlike 'CMPM-build8-squarevector7e-*'))) {
+     ($info.buildId -notlike 'CMPM-build8-squarevector7e-*' -and $info.buildId -notlike 'CMPM-build8-squarecallback-*')))) {
     throw 'DispatchTrace requires the squaredispatch build with -ClockTimeline -SettleTrace -FocusMs 25.'
 }
 if ($IrqdTrace -and (-not $DispatchTrace -or
     ($info.buildId -notlike 'CMPM-build8-squareirqsource-*' -and
      $info.buildId -notlike 'CMPM-build8-squarecausal-*' -and
-     $info.buildId -notlike 'CMPM-build8-squarevector7e-*'))) {
+     ($info.buildId -notlike 'CMPM-build8-squarevector7e-*' -and $info.buildId -notlike 'CMPM-build8-squarecallback-*')))) {
     throw 'IrqdTrace requires the squareirqsource build with -DispatchTrace -ClockTimeline -SettleTrace -FocusMs 25.'
 }
 if ($CausalTrace -and (-not $IrqdTrace -or
     ($info.buildId -notlike 'CMPM-build8-squarecausal-*' -and
-     $info.buildId -notlike 'CMPM-build8-squarevector7e-*'))) {
+     ($info.buildId -notlike 'CMPM-build8-squarevector7e-*' -and $info.buildId -notlike 'CMPM-build8-squarecallback-*')))) {
     throw 'CausalTrace requires the squarecausal build with -IrqdTrace -DispatchTrace -ClockTimeline -SettleTrace -FocusMs 25.'
 }
 if ($Vector7eTrace -and (-not $CausalTrace -or
-    $info.buildId -notlike 'CMPM-build8-squarevector7e-*')) {
+    ($info.buildId -notlike 'CMPM-build8-squarevector7e-*' -and $info.buildId -notlike 'CMPM-build8-squarecallback-*'))) {
     throw 'Vector7eTrace requires the squarevector7e build with -CausalTrace -IrqdTrace -DispatchTrace -ClockTimeline -SettleTrace -FocusMs 25.'
 }
 
@@ -264,7 +264,7 @@ try {
                 $info.buildId -like 'CMPM-build8-squaredispatch-*' -or
                 $info.buildId -like 'CMPM-build8-squareirqsource-*' -or
                 $info.buildId -like 'CMPM-build8-squarecausal-*' -or
-                $info.buildId -like 'CMPM-build8-squarevector7e-*') -and
+                ($info.buildId -like 'CMPM-build8-squarevector7e-*' -or $info.buildId -like 'CMPM-build8-squarecallback-*')) -and
                 (Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + '.host-blocks.csv')).Length -lt 1000) {
                 throw "$($case.Name) did not record word-195 interrupt boundaries."
             }
@@ -275,7 +275,7 @@ try {
                 $info.buildId -like 'CMPM-build8-squaredispatch-*' -or
                 $info.buildId -like 'CMPM-build8-squareirqsource-*' -or
                 $info.buildId -like 'CMPM-build8-squarecausal-*' -or
-                $info.buildId -like 'CMPM-build8-squarevector7e-*') -and
+                ($info.buildId -like 'CMPM-build8-squarevector7e-*' -or $info.buildId -like 'CMPM-build8-squarecallback-*')) -and
                 (Get-Item -LiteralPath ($env:G1_DSP_SETTLE_FILE + '.host-waits.csv')).Length -lt 1000) {
                 throw "$($case.Name) did not record the word-195 host-command waits."
             }

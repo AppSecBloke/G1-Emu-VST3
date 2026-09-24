@@ -7,6 +7,15 @@ Older entries cite their commit by hand.
 
 ## 2026-09-24
 
+- **Bounded DSP0 callback/interrupt diagnostic (Codex; local change, not committed).**
+  Added diagnostic-overlay-only callback entry/exit snapshots before JIT execution,
+  ordered ESSI1 receive/base-clock and DMA3 request records, and read-only
+  interrupt queue/enqueue/acceptance records for cycles 211,258,184–368.
+  The two-case runner retains Square-32 silent and Square-1 audible gates;
+  the existing startup runner also accepts the new diagnostic bundle ID.
+  Verification: source/diff and PowerShell syntax checks; CI compilation and
+  ROM-backed comparison remain pending.
+
 - **Bounded vector `$7E` state diagnostic (Codex; local change, not committed).**
   Added a trace-only snapshot of the selected host-command read, `R0`, host RX
   depth and changed DSP0 X/Y/P state, with a full pre-note comparison snapshot

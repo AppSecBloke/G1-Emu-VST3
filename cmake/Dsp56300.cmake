@@ -119,6 +119,50 @@ g1_dsp_replace(dma.cpp
 
 # Observe ESSI clock catch-up, DMA3 requests and vector-$1E injection only in diagnostic builds.
 if(G1_DSP_TRACE)
+	# Separate the real peripheral callback from the JIT block that follows it.
+	# These calls and the queue accessor exist only in the diagnostic build copy.
+	g1_dsp_replace(dsp.h
+		"void\texecInterrupts\t\t\t\t\t();"
+		"void\tg1TraceCallbackWindowState(const char* event, TWord vector = 0, int result = -1);\n\t\tvoid\texecInterrupts\t\t\t\t\t();")
+	g1_dsp_replace(dsp.h
+		"const auto delayA = static_cast<Ta*>(perif[0])->exec();"
+		"g1TraceCallbackWindowState(\"callback_entry\");\n\t\t\tconst auto delayA = static_cast<Ta*>(perif[0])->exec();")
+	g1_dsp_replace(dsp.h
+		"processExternalInterrupts();\n\t\t}"
+		"processExternalInterrupts();\n\t\t\tg1TraceCallbackWindowState(\"callback_exit\");\n\t\t}")
+	g1_dsp_replace(esaiclock.h
+		"auto getLastClock() const { return m_lastClock; }"
+		"auto getLastClock() const { return m_lastClock; }\n\t\tuint64_t g1TraceFineClock(const Esxi* esxi) const\n\t\t{\n\t\t\tfor(const auto& entry : m_esais)\n\t\t\t\tif(entry.esai == esxi) return entry.fineLastClock;\n\t\t\treturn 0;\n\t\t}")
+	g1_dsp_replace(dsp.cpp
+		"#include \"opcodecycles.h\""
+		"#include \"opcodecycles.h\"\n#include \"peripherals.h\"\n#include \"g1_essi_trace.h\"")
+	g1_dsp_replace(dsp.cpp
+		"void DSP::execInterrupts()"
+		"void DSP::g1TraceCallbackWindowState(const char* event, TWord vector, int result)\n\t{\n\t\tg1CallbackWindowSnapshot(event, *this, m_pendingInterrupts, m_pendingExternalInterrupts, vector, result);\n\t}\n\n\tvoid DSP::execInterrupts()")
+	g1_dsp_replace(dsp.cpp
+		"m_pendingInterrupts.push_back({_interruptVectorAddress});"
+		"g1TraceCallbackWindowState(\"interrupt_enqueue_pre\", _interruptVectorAddress);\n\t\tm_pendingInterrupts.push_back({_interruptVectorAddress});\n\t\tg1TraceCallbackWindowState(\"interrupt_enqueue_post\", _interruptVectorAddress);")
+	g1_dsp_replace(dsp.cpp
+		"// it is important that the processing mode is switched first before popping the vector to prevent a possible race condition in hasPendingInterrupt()"
+		"g1TraceCallbackWindowState(\"interrupt_accept_pre\", vba);\n\t\t// it is important that the processing mode is switched first before popping the vector to prevent a possible race condition in hasPendingInterrupt()")
+	g1_dsp_replace(dsp.cpp
+		"if(isInterruptMasked(vba))\n\t\t{"
+		"if(isInterruptMasked(vba))\n\t\t{\n\t\t\tg1TraceCallbackWindowState(\"interrupt_masked\", vba);")
+	g1_dsp_replace(dsp.cpp
+		"m_processingMode = FastInterrupt;\n\t\t\tm_pendingInterrupts.pop_front();"
+		"m_processingMode = FastInterrupt;\n\t\t\tm_pendingInterrupts.pop_front();\n\t\t\tg1TraceCallbackWindowState(\"interrupt_clear\", vba);")
+	g1_dsp_replace(dsp.cpp
+		"m_processingMode = Default;\n\t\t\t\tm_pendingInterrupts.pop_front();"
+		"m_processingMode = Default;\n\t\t\t\tm_pendingInterrupts.pop_front();\n\t\t\t\tg1TraceCallbackWindowState(\"interrupt_custom_clear\", interrupt);")
+	g1_dsp_replace(dsp.cpp
+		"\t\texecInterrupt(vba);\n\t}"
+		"\t\texecInterrupt(vba);\n\t\tg1TraceCallbackWindowState(\"interrupt_accept_post\", vba);\n\t}")
+	g1_dsp_replace(dsp.cpp
+		"\t\texecInterrupt(_interruptVectorAddress);\n\n\t\twhile(m_processingMode != Default)"
+		"\t\tg1TraceCallbackWindowState(\"interrupt_immediate_accept_pre\", _interruptVectorAddress);\n\t\texecInterrupt(_interruptVectorAddress);\n\t\tg1TraceCallbackWindowState(\"interrupt_immediate_accept_post\", _interruptVectorAddress);\n\n\t\twhile(m_processingMode != Default)")
+	g1_dsp_replace(dsp.cpp
+		"while(!m_pendingExternalInterrupts.empty())\n\t\t\tinjectInterrupt(m_pendingExternalInterrupts.pop_front());"
+		"while(!m_pendingExternalInterrupts.empty())\n\t\t{\n\t\t\tconst auto vector = m_pendingExternalInterrupts.front();\n\t\t\tg1TraceCallbackWindowState(\"external_clear_pre\", vector);\n\t\t\tm_pendingExternalInterrupts.pop_front();\n\t\t\tg1TraceCallbackWindowState(\"external_clear_post\", vector);\n\t\t\tinjectInterrupt(vector);\n\t\t}")
 	g1_dsp_replace(dma.cpp
 		"#include \"interrupts.h\""
 		"#include \"interrupts.h\"\n#include \"g1_dma_trace.h\"")
@@ -158,6 +202,9 @@ if(G1_DSP_TRACE)
 	g1_dsp_replace(esaiclock.cpp
 		"for(size_t i=0; i<rxCount; ++i) processRx[i]->execRX();"
 		"g1TraceEssiClock(\"rx_dispatch\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, 0, -1, -1, rxCount);\n\tfor(size_t i=0; i<rxCount; ++i) processRx[i]->execRX();")
+	g1_dsp_replace(esaiclock.cpp
+		"for(size_t i=0; i<rxCount; ++i) processRx[i]->execRX();"
+		"for(size_t i=0; i<rxCount; ++i)\n\t{\n\t\tg1TraceEssiClock(\"base_rx_pre\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, reinterpret_cast<uintptr_t>(processRx[i]), -1, -1, rxCount);\n\t\tprocessRx[i]->execRX();\n\t\tg1TraceEssiClock(\"base_rx_post\", m_periph, *m_dspInstructionCounter, m_lastClock, m_cyclesPerSample, static_cast<uint32_t>(m_clockSource), -1, reinterpret_cast<uintptr_t>(processRx[i]), -1, -1, rxCount);\n\t}")
 endif()
 
 foreach(source IN LISTS g1_dsp_files)
@@ -181,10 +228,12 @@ if(g1_cmpm_source_index EQUAL -1)
 	message(FATAL_ERROR "CMPM correction is not in the dsp56kEmu source list")
 endif()
 if(G1_DSP_TRACE)
-	list(FIND g1_dsp_build_sources "${g1_dsp_overlay}/esaiclock.cpp" g1_essi_trace_source_index)
-	if(g1_essi_trace_source_index EQUAL -1)
-		message(FATAL_ERROR "ESSI diagnostic overlay is not in the dsp56kEmu source list")
-	endif()
+	foreach(name IN ITEMS dsp.cpp dma.cpp esaiclock.cpp)
+		list(FIND g1_dsp_build_sources "${g1_dsp_overlay}/${name}" g1_trace_source_index)
+		if(g1_trace_source_index EQUAL -1)
+			message(FATAL_ERROR "${name} diagnostic overlay is not in the dsp56kEmu source list")
+		endif()
+	endforeach()
 endif()
 message(STATUS "G1 DSP CMPM correction: ${g1_dsp_overlay}/jitops_alu.cpp")
 target_include_directories(dsp56kEmu BEFORE PUBLIC "${CMAKE_BINARY_DIR}/g1-dsp")

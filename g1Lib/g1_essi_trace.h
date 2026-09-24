@@ -10,6 +10,7 @@
 #include <fstream>
 #include <initializer_list>
 #include <mutex>
+#include <sstream>
 #include <string>
 
 namespace dsp56k
@@ -39,6 +40,177 @@ namespace dsp56k
 		static G1EssiTimeline state;
 		return state;
 	}
+	// A separate, tightly bounded diagnostic. All observations are made on the
+	// DSP-owning thread; no emulated clock, queue or peripheral is advanced here.
+	struct G1CallbackWindow
+	{
+		std::mutex mutex;
+		std::ofstream out;
+		uint64_t sequence = 0;
+		uint32_t callback = 0, baseServices = 0, fineReceives = 0, baseReceives = 0;
+		bool inCallback = false;
+	};
+
+	inline G1CallbackWindow& g1CallbackWindow()
+	{
+		static G1CallbackWindow state;
+		return state;
+	}
+
+	inline bool g1CallbackWindowActive(const DSP& dsp)
+	{
+		static const char* path = std::getenv("G1_DSP_CALLBACK_WINDOW_FILE");
+		return path && *path && dsp.getCycles() >= 211258184 &&
+			dsp.getCycles() <= 211258368 &&
+			g1EssiTimeline().target.load(std::memory_order_acquire) ==
+				reinterpret_cast<uintptr_t>(&dsp);
+	}
+
+	inline void g1CallbackWindowWrite(const DSP& dsp, const char* event,
+		const uint32_t vector, const std::string& queue, const std::string& external,
+		const uint64_t baseClock, const uint64_t fineClock, const uint32_t deadline,
+		const uint64_t targetClock, const uint32_t essi1Sr,
+		const bool essi1RxEnabled, const bool essi1DmaRequest,
+		const uint32_t dmaDcr, const uint32_t dmaDsr, const uint32_t dmaDdr,
+		const uint32_t dmaDco, const uint32_t dmaDstr, const int result = -1)
+	{
+		if(!g1CallbackWindowActive(dsp)) return;
+		auto& state = g1CallbackWindow();
+		std::lock_guard<std::mutex> lock(state.mutex);
+		if(!state.out.is_open())
+		{
+			state.out.open(std::getenv("G1_DSP_CALLBACK_WINDOW_FILE"), std::ios::out | std::ios::trunc);
+			state.out << "seq,event,callback,cycle,pc,instructions,mode,vector,result,"
+				"base_clock,fine_clock,base_lag,fine_lag,deadline,target_clock,"
+				"base_services,fine_receives,base_receives,essi1_sr,"
+				"essi1_rx_enabled,essi1_rdf,essi1_dma_request,"
+				"dma3_dcr,dma3_dsr,dma3_ddr,dma3_dco,dma_dstr,"
+				"pending,external_pending,pending_queue,external_queue\n";
+		}
+		const auto cycle = dsp.getCycles();
+		state.out << ++state.sequence << ',' << event << ',' << state.callback << ','
+			<< cycle << ',' << dsp.getPC().toWord() << ',' << dsp.getInstructionCounter()
+			<< ',' << static_cast<uint32_t>(dsp.getProcessingMode()) << ',' << vector
+			<< ',' << result << ',' << baseClock << ',' << fineClock << ','
+			<< (cycle >= baseClock ? cycle - baseClock : 0) << ','
+			<< (cycle >= fineClock ? cycle - fineClock : 0) << ',' << deadline
+			<< ',' << targetClock << ',' << state.baseServices << ','
+			<< state.fineReceives << ',' << state.baseReceives << ',' << essi1Sr
+			<< ',' << essi1RxEnabled << ',' << ((essi1Sr >> 7) & 1)
+			<< ',' << essi1DmaRequest
+			<< ',' << dmaDcr << ',' << dmaDsr << ',' << dmaDdr << ',' << dmaDco
+			<< ',' << dmaDstr << ',' << dsp.hasPendingInterrupts()
+			<< ',' << dsp.hasPendingExternalInterrupts() << ',' << queue << ','
+			<< external << '\n';
+	}
+
+	template<typename TQueue, typename TExternal>
+	inline void g1CallbackWindowSnapshot(const char* event, DSP& dsp,
+		const TQueue& queue, const TExternal& external, const uint32_t vector = 0,
+		const int result = -1)
+	{
+		if(!g1CallbackWindowActive(dsp)) return;
+		auto& state = g1CallbackWindow();
+		if(std::strcmp(event, "callback_entry") == 0)
+		{
+			++state.callback;
+			state.baseServices = state.fineReceives = state.baseReceives = 0;
+			state.inCallback = true;
+		}
+		auto printQueue = [](const auto& q)
+		{
+			std::ostringstream out;
+			for(size_t i = 0, count = q.size(); i < count; ++i)
+			{
+				if(i) out << '|';
+				out << q[i];
+			}
+			return out.str();
+		};
+		auto& periph = static_cast<Peripherals56303&>(*dsp.getPeriph(0));
+		auto& dma = periph.getDMA();
+		auto& clock = periph.getEssiClock();
+		const auto fineClock = clock.g1TraceFineClock(&periph.getEssi1());
+		g1CallbackWindowWrite(dsp, event, vector, printQueue(queue), printQueue(external),
+			clock.getLastClock(), fineClock, clock.getNextCycleDeadline(),
+			dsp.getPeriph(0)->getTargetClock(),
+			static_cast<uint32_t>(periph.getEssi1().getSR()),
+			periph.getEssi1().hasEnabledReceivers(),
+			periph.getEssi1().hasPendingReceiveDmaRequest(),
+			dma.getDCR(3), dma.getDSR(3), dma.getDDR(3), dma.getDCO(3),
+			dma.getDSTR(), result);
+		if(std::strcmp(event, "callback_exit") == 0) state.inCallback = false;
+	}
+
+	inline void g1CallbackWindowClock(const char* stage, IPeripherals& peripherals,
+		const uint64_t clockCount, const uint64_t lastClock, const uint32_t period,
+		const uintptr_t esxi, const uint32_t finePeriod, const uint64_t fineLastClock,
+		const uint32_t deadline, const int rxCount)
+	{
+		auto& dsp = peripherals.getDSP();
+		if(!g1CallbackWindowActive(dsp)) return;
+		auto& state = g1CallbackWindow();
+		if(!state.inCallback) return;
+		const auto& essi1 = static_cast<Peripherals56303&>(peripherals).getEssi1();
+		const bool isEssi1 = esxi == reinterpret_cast<uintptr_t>(&essi1);
+		if(std::strcmp(stage, "clock_advance") == 0) ++state.baseServices;
+		if(isEssi1 && std::strcmp(stage, "fine_rx_post") == 0) ++state.fineReceives;
+		if(isEssi1 && std::strcmp(stage, "base_rx_post") == 0) ++state.baseReceives;
+		if(std::strcmp(stage, "clock_enter") != 0 &&
+			std::strcmp(stage, "clock_advance") != 0 &&
+			std::strcmp(stage, "fine_tick_pre") != 0 &&
+			std::strcmp(stage, "fine_tick_post") != 0 &&
+			std::strcmp(stage, "fine_rx_pre") != 0 &&
+			std::strcmp(stage, "fine_rx_post") != 0 &&
+			std::strcmp(stage, "base_rx_pre") != 0 &&
+			std::strcmp(stage, "base_rx_post") != 0 &&
+			std::strcmp(stage, "clock_schedule") != 0 &&
+			std::strcmp(stage, "clock_immediate") != 0) return;
+		std::lock_guard<std::mutex> lock(state.mutex);
+		static std::ofstream out;
+		if(!out.is_open())
+		{
+			out.open(std::string(std::getenv("G1_DSP_CALLBACK_WINDOW_FILE")) + ".clock.csv",
+				std::ios::out | std::ios::trunc);
+			out << "seq,callback,stage,cycle,pc,clock_count,last_clock,base_lag,"
+				"period,fine_period,fine_last_clock,fine_lag,deadline,essi1,rx_count,"
+				"essi1_sr,base_services,fine_receives,base_receives\n";
+		}
+		out << ++state.sequence << ',' << state.callback << ',' << stage << ','
+			<< dsp.getCycles() << ',' << dsp.getPC().toWord() << ',' << clockCount
+			<< ',' << lastClock << ',' << (clockCount >= lastClock ? clockCount - lastClock : 0)
+			<< ',' << period << ',' << finePeriod << ',' << fineLastClock << ','
+			<< (clockCount >= fineLastClock ? clockCount - fineLastClock : 0) << ','
+			<< deadline << ',' << isEssi1 << ',' << rxCount << ','
+			<< static_cast<uint32_t>(essi1.getSR())
+			<< ',' << state.baseServices << ',' << state.fineReceives << ','
+			<< state.baseReceives << '\n';
+	}
+
+	inline void g1CallbackWindowDma(const char* stage, IPeripherals& peripherals,
+		const TWord index, const TWord dcr, const TWord dsr, const TWord ddr,
+		const TWord dco, const TWord dstr, const int injectResult)
+	{
+		auto& dsp = peripherals.getDSP();
+		if(index != 3 || !g1CallbackWindowActive(dsp)) return;
+		auto& state = g1CallbackWindow();
+		if(!state.inCallback) return;
+		std::lock_guard<std::mutex> lock(state.mutex);
+		static std::ofstream out;
+		if(!out.is_open())
+		{
+			out.open(std::string(std::getenv("G1_DSP_CALLBACK_WINDOW_FILE")) + ".dma.csv",
+				std::ios::out | std::ios::trunc);
+			out << "seq,callback,stage,cycle,pc,dcr,dsr,ddr,dco,dstr,"
+				"essi1_sr,pending,inject_result\n";
+		}
+		out << ++state.sequence << ',' << state.callback << ',' << stage << ','
+			<< dsp.getCycles() << ',' << dsp.getPC().toWord() << ',' << dcr << ','
+			<< dsr << ',' << ddr << ',' << dco << ',' << dstr << ','
+			<< static_cast<uint32_t>(static_cast<Peripherals56303&>(peripherals).getEssi1().getSR()) << ','
+			<< dsp.hasPendingInterrupts() << ',' << injectResult << '\n';
+	}
+
 
 	inline void g1SetEssiTimelineTarget(const uintptr_t dsp)
 	{
@@ -373,6 +545,8 @@ namespace dsp56k
 	{
 		g1TraceEssiTimeline(stage, peripherals, clockCount, lastClock, period,
 			clockSource, esxi, finePeriod, fineLastClock, hasFine, nextDeadline);
+		g1CallbackWindowClock(stage, peripherals, clockCount, lastClock, period,
+			esxi, finePeriod, fineLastClock, nextDeadline, rxCount);
 		// The runner starts a new process for each case. Resolve its trace settings
 		// once: this hook is reached on every peripheral clock poll, including Saw.
 		static const char* path = std::getenv("G1_DSP_ESSI_TRACE_FILE");

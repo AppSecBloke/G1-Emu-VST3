@@ -67,12 +67,24 @@ jobs:
           foreach ($marker in @('g1_essi_trace.h', '"clock_enter"', '"clock_schedule"', '"clock_immediate"', '"fine_tick_pre"', '"fine_tick_post"', '"fine_rx_pre"', '"fine_rx_post"', '"clock_advance"', '"rx_pre"', '"rx_post"', '"rx_dispatch"')) {
             if (-not $essiClock.Contains($marker)) { throw "The ESSI producer overlay is missing $marker" }
           }
+          if (-not (Get-Content diagnostic-build/g1-dsp/dsp56kEmu/esaiclock.h -Raw).Contains('g1TraceFineClock')) {
+            throw 'The diagnostic-only ESSI fine-clock accessor is missing.'
+          }
           $timeline = Get-Content G1-Emu/g1Lib/g1_essi_trace.h -Raw
           foreach ($marker in @('G1_DSP_ESSI_TIMELINE_FILE', 'G1_DSP_DISPATCH_TRACE_FILE', 'G1_DSP_IRQD_TRACE_FILE', 'G1_DSP_CAUSAL_HOST_TRACE_FILE', 'fine_threshold', 'g1TraceEssiBlock', 'g1TraceDispatchStep', 'g1TraceIrqdEvent', 'g1TraceCausalHost')) {
             if (-not $timeline.Contains($marker)) { throw "The ESSI clock timeline is missing $marker" }
           }
           if (-not (Get-Content G1-Emu/g1Lib/g1dsp.cpp -Raw).Contains('G1_DSP_VECTOR7E_TRACE_FILE')) {
             throw 'The vector-7E memory-state probe is missing.'
+          }
+          $core = Get-Content diagnostic-build/g1-dsp/dsp56kEmu/dsp.cpp -Raw
+          $coreHeader = Get-Content diagnostic-build/g1-dsp/dsp56kEmu/dsp.h -Raw
+          foreach ($marker in @('"callback_entry"', '"callback_exit"')) {
+            if (-not $coreHeader.Contains($marker)) { throw "The callback boundary overlay is missing $marker" }
+          }
+          foreach ($marker in @('"interrupt_enqueue_pre"', '"interrupt_enqueue_post"',
+                               '"interrupt_accept_pre"', '"interrupt_clear"')) {
+            if (-not $core.Contains($marker)) { throw "The interrupt observation overlay is missing $marker" }
           }
 
       - name: Build tools only
@@ -89,6 +101,7 @@ jobs:
           Copy-Item G1-Emu/tools/patchtest/run-matched.ps1 diagnostic-bundle/
           Copy-Item G1-Emu/tools/patchtest/run-square-trace.ps1 diagnostic-bundle/
           Copy-Item G1-Emu/tools/patchtest/run-square-startup.ps1 diagnostic-bundle/
+          Copy-Item G1-Emu/tools/patchtest/run-square-callback.ps1 diagnostic-bundle/
           Copy-Item G1-Emu/SimpleOSC.pch diagnostic-bundle/
           Copy-Item G1-Emu/WobbleVoice-4Voice.pch diagnostic-bundle/
           Copy-Item G1-Emu/WobbleVoice-2Osc-4Voice.pch diagnostic-bundle/
@@ -96,18 +109,21 @@ jobs:
           Copy-Item G1-Emu/docs/patch-diagnostics.md diagnostic-bundle/README.md
           Copy-Item G1-Emu/LICENSE diagnostic-bundle/
           $info = [ordered]@{
-            buildId = "CMPM-build8-squarevector7e-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+            buildId = "CMPM-build8-squarecallback-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
             g1 = (git -C G1-Emu rev-parse HEAD)
             gearmulator = (git -C gearmulator-md-mm rev-parse HEAD)
             dsp56300 = (git -C gearmulator-md-mm/source/dsp56300 rev-parse HEAD)
             dspOverlayCmpmSha256 = (Get-FileHash diagnostic-build/g1-dsp/dsp56kEmu/jitops_alu.cpp -Algorithm SHA256).Hash
+            dspOverlayCoreSha256 = (Get-FileHash diagnostic-build/g1-dsp/dsp56kEmu/dsp.cpp -Algorithm SHA256).Hash
+            dspOverlayCoreHeaderSha256 = (Get-FileHash diagnostic-build/g1-dsp/dsp56kEmu/dsp.h -Algorithm SHA256).Hash
             dspOverlayDmaSha256 = (Get-FileHash diagnostic-build/g1-dsp/dsp56kEmu/dma.cpp -Algorithm SHA256).Hash
             dspOverlayEssiClockSha256 = (Get-FileHash diagnostic-build/g1-dsp/dsp56kEmu/esaiclock.cpp -Algorithm SHA256).Hash
+            dspOverlayEssiHeaderSha256 = (Get-FileHash diagnostic-build/g1-dsp/dsp56kEmu/esaiclock.h -Algorithm SHA256).Hash
             mc68k = (git -C gearmulator-md-mm/source/mc68k rev-parse HEAD)
             juce = (git -C JUCE rev-parse HEAD)
             nme = (git -C Animatek-NME rev-parse HEAD)
             submodules = @(git -C gearmulator-md-mm submodule status --recursive)
-            configuration = 'Release, x64, static MSVC runtime, CMPM overlay and opt-in DSP0 vector-7E state probe (32 failing, 1 reference)'
+            configuration = 'Release, x64, static MSVC runtime, CMPM overlay and bounded DSP0 callback/interrupt observation (Square 32 and 1)'
             runnerImage = $env:ImageVersion
             runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
             executableSha256 = (Get-FileHash diagnostic-bundle/g1patchtest.exe -Algorithm SHA256).Hash
@@ -132,12 +148,16 @@ jobs:
           $parseErrors = $null
           [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path ./diagnostic-bundle/run-square-startup.ps1), [ref]$tokens, [ref]$parseErrors) | Out-Null
           if ($parseErrors.Count) { throw "Square startup runner has PowerShell syntax errors: $parseErrors" }
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path ./diagnostic-bundle/run-square-callback.ps1), [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count) { throw "Square callback runner has PowerShell syntax errors: $parseErrors" }
           # The expected usage exit above must not become this step's exit status.
           $global:LASTEXITCODE = 0
 
       - uses: actions/upload-artifact@v4
         with:
-          name: G1-patch-diagnostics-CMPM-build8-squarevector7e-${{ github.run_id }}-${{ github.run_attempt }}
+          name: G1-patch-diagnostics-CMPM-build8-squarecallback-${{ github.run_id }}-${{ github.run_attempt }}
           path: diagnostic-bundle/
           if-no-files-found: error
           retention-days: 14

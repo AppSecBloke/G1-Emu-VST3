@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <fstream>
 #include <mutex>
+#include "g1_essi_trace.h"
 
 namespace dsp56k
 {
@@ -13,6 +14,8 @@ namespace dsp56k
 		const TWord index, const TWord dcr, const TWord dsr, const TWord ddr,
 		const TWord dco, const TWord dstr, const int injectResult = -1)
 	{
+		g1CallbackWindowDma(stage, peripherals, index, dcr, dsr, ddr, dco,
+			dstr, injectResult);
 		if(index != 3 || dsr != 0xffffa8 || ddr != 0x6c5)
 			return;
 		const char* path = std::getenv("G1_DSP_DMA_TRACE_FILE");

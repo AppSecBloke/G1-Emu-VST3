@@ -254,6 +254,23 @@ a full 2K-word X/Y/P pre-note snapshot for persistent-state comparison. The
 runner requires a service callback in the audible cases and a dropped command
 in Square-32; the established audio gates remain unchanged.
 
+## Bounded Square callback capture
+
+The `squarecallback` diagnostic bundle adds a two-case observation of the
+aligned DSP0 callback at cycle 211,258,189. In the extracted bundle, run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run-square-callback.ps1 -RomPath 'C:\path\NORD-MODULAR-RACK-VER-3.03.BIN'
+```
+
+The output ZIP contains `dsp0-callback.csv` (callback entry/exit and complete
+pending/external vector queues), `.clock.csv` (ordered ESSI clock and receive
+events), `.dma.csv` (DMA3 requests and interrupt injection), and the existing
+JIT-boundary/IRQD records for Square-32 and Square-1. Records are confined to
+DSP0 cycles 211,258,184–368; the fine clock is read through a diagnostic-only
+accessor without an earlier timeline capture. The runner verifies the unchanged silent
+Square-32 / audible Square-1 result before packaging. It does not include a ROM.
+
 ## Overlapping-note capture
 
 The same bundle can capture two overlapping notes through the G1 MIDI IN path. Run this
