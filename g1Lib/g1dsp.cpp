@@ -5,6 +5,7 @@
 #ifdef G1_DSP_TRACE
 #include "g1_essi_trace.h"
 #include "g1_output_trace.h"
+#include <optional>
 #endif
 
 #include <algorithm>
@@ -94,6 +95,21 @@ namespace g1
 			config.maxInstructionsPerBlock = 1;
 #endif
 		config.maxDoIterations = 1;
+#ifdef G1_DSP_TRACE
+		// A diagnostic-only runtime variant: cached blocks retain 32 instructions
+		// except when the owning DSP is approaching a dispatch deadline.
+		if(_index == 0 && std::getenv("G1_DSP_DEADLINE_PROBE"))
+		{
+			m_deadlineProbe = true;
+			const auto base = config;
+			config.getBlockConfig = [this, base](dsp56k::TWord) -> std::optional<dsp56k::JitConfig>
+			{
+				auto variant = base;
+				variant.maxInstructionsPerBlock = m_deadlineProbeFine ? 1 : 32;
+				return variant;
+			};
+		}
+#endif
 		m_dsp.getJit().setConfig(config);
 
 		// Program memory full of RTS: a jump into garbage does not compile odd things.
@@ -742,6 +758,22 @@ namespace g1
 #endif
 			}
 #ifdef G1_DSP_TRACE
+			const auto probeInstructions = m_deadlineProbe ? m_dsp.getInstructionCounter() : 0;
+			const auto probeIrqd = m_nextIrqd;
+			if(m_deadlineProbe)
+			{
+				const auto mode = m_dsp.getProcessingMode();
+				const bool ordinary = mode == dsp56k::DSP::Default;
+				const bool suppression = mode == dsp56k::DSP::DefaultPreventInterrupt;
+				const bool peripheralSoon =
+					m_dsp.getPeriph(0)->isDue(probeInstructions + 32, before + 256);
+				// 256 is deliberately conservative for the observed <=51-cycle
+				// 32-instruction blocks; overruns are reported, never hidden.
+				m_deadlineProbeFine = suppression ||
+					(ordinary && (m_dsp.hasPendingInterrupts() || peripheralSoon)) ||
+					(probeIrqd > before && probeIrqd - before <= 256);
+				m_dsp.g1SetDeadlineBlockMode(m_deadlineProbeFine);
+			}
 			const auto dispatchBefore = traceDispatch ?
 				dsp56k::g1CaptureDispatch(m_dsp, m_dispatchServiced, m_lastVector) :
 				dsp56k::G1DispatchSnapshot{};
@@ -761,6 +793,18 @@ namespace g1
 				onLaChanged();
 			const auto now = m_dsp.getCycles();
 #ifdef G1_DSP_TRACE
+			if(m_deadlineProbe)
+			{
+				if(m_deadlineProbeFine) ++m_deadlineProbeShortBlocks;
+				else
+				{
+					++m_deadlineProbeLongBlocks;
+					if(m_dsp.getInstructionCounter() - probeInstructions > 1)
+						++m_deadlineProbeMultiBlocks;
+					if(before < probeIrqd && now > probeIrqd)
+						++m_deadlineProbeIrqdOverruns;
+				}
+			}
 			if(m_vector7ePostBlock)
 			{
 				vector7eProbeRecord("vector7e_block_exit");
@@ -1126,6 +1170,8 @@ namespace g1
 		if(m_dsp.hasPendingInterrupts())
 		{
 #ifdef G1_DSP_TRACE
+			if(m_deadlineProbe && _vector == 0x7e) ++m_deadlineProbeDropped7e;
+			if(m_deadlineProbe && _vector == 0x76) ++m_deadlineProbeDropped76;
 			if(m_vector7eActive && _vector == 0x7e && m_hostWords == 4185)
 				vector7eProbeRecord("command_dropped");
 			if(m_index == 0)

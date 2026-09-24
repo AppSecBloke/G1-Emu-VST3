@@ -292,10 +292,16 @@ if(G1_DSP_TRACE)
 	# These calls and the queue accessor exist only in the diagnostic build copy.
 	g1_dsp_replace(dsp.h
 		"void\texecInterrupts\t\t\t\t\t();"
-		"void\tg1TraceCallbackWindowState(const char* event, TWord vector = 0, int result = -1);\n\t\tvoid\tg1MaybeArmFineDrain();\n\t\tvoid\tg1FineDrainInterruptCleared(TWord vector);\n\t\tvoid\tg1MaybeEndFineDrain();\n\t\tvoid\texecInterrupts\t\t\t\t\t();")
+		"void\tg1TraceCallbackWindowState(const char* event, TWord vector = 0, int result = -1);\n\t\tvoid\tg1MaybeArmFineDrain();\n\t\tvoid\tg1FineDrainInterruptCleared(TWord vector);\n\t\tvoid\tg1MaybeEndFineDrain();\n\t\tvoid\tg1SetDeadlineBlockMode(bool fine);\n\t\tvoid\tg1DeadlineBlock(TWord pc);\n\t\tvoid\texecInterrupts\t\t\t\t\t();")
+	g1_dsp_replace(dsp.h
+		"#pragma once"
+		"#pragma once\n#include <unordered_map>")
 	g1_dsp_replace(dsp.h
 		"bool\t\t\t\t\t\t\tm_invalidPCReported = false;"
-		"bool\t\t\t\t\t\t\tm_invalidPCReported = false;\n\t\tbool\t\t\t\t\t\t\tm_g1FineDrainActive = false;\n\t\tuint32_t\t\t\t\t\t\tm_g1FineDrainRemaining = 0;")
+		"bool\t\t\t\t\t\t\tm_invalidPCReported = false;\n\t\tbool\t\t\t\t\t\t\tm_g1FineDrainActive = false;\n\t\tuint32_t\t\t\t\t\t\tm_g1FineDrainRemaining = 0;\n\t\tbool\t\t\t\t\t\t\tm_g1DeadlineEnabled = false;\n\t\tbool\t\t\t\t\t\t\tm_g1DeadlineFine = false;\n\t\tstd::unordered_map<TWord, bool> m_g1DeadlineVariants;")
+	g1_dsp_replace(dsp.h
+		"m_jitEntries[pc](&reg, pc);"
+		"g1DeadlineBlock(pc);\n\t\t\tm_jitEntries[pc](&reg, pc);")
 	g1_dsp_replace(dsp.h
 		"const auto delayA = static_cast<Ta*>(perif[0])->exec();"
 		"g1TraceCallbackWindowState(\"callback_entry\");\n\t\t\tconst auto delayA = static_cast<Ta*>(perif[0])->exec();")
@@ -310,7 +316,29 @@ if(G1_DSP_TRACE)
 		"#include \"opcodecycles.h\"\n#include \"peripherals.h\"\n#include \"g1_essi_trace.h\"")
 	g1_dsp_replace(dsp.cpp
 		"void DSP::execInterrupts()"
-		[=[void DSP::g1TraceCallbackWindowState(const char* event, TWord vector, int result)
+		[=[void DSP::g1SetDeadlineBlockMode(bool fine)
+	{
+		m_g1DeadlineEnabled = true;
+		m_g1DeadlineFine = fine;
+	}
+
+	void DSP::g1DeadlineBlock(TWord pc)
+	{
+		if(!m_g1DeadlineEnabled) return;
+		const auto it = m_g1DeadlineVariants.find(pc);
+		if(it == m_g1DeadlineVariants.end())
+		{
+			m_g1DeadlineVariants.emplace(pc, m_g1DeadlineFine);
+			if(m_g1DeadlineFine) m_jit.destroy(pc);
+		}
+		else if(it->second != m_g1DeadlineFine)
+		{
+			m_jit.destroy(pc);
+			it->second = m_g1DeadlineFine;
+		}
+	}
+
+	void DSP::g1TraceCallbackWindowState(const char* event, TWord vector, int result)
 	{
 		g1CallbackWindowSnapshot(event, *this, m_pendingInterrupts, m_pendingExternalInterrupts, vector, result);
 	}

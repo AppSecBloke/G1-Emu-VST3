@@ -52,6 +52,14 @@ namespace g1
 		uint64_t laChanges() const { return m_laChanges; }	// times a loop end has been moved
 		const std::map<uint32_t, uint64_t>& servicedVectors() const { return m_servicedVectors; }
 		uint32_t lastVector() const { return m_lastVector; }
+#ifdef G1_DSP_TRACE
+		uint64_t deadlineProbeLongBlocks() const { return m_deadlineProbeLongBlocks; }
+		uint64_t deadlineProbeShortBlocks() const { return m_deadlineProbeShortBlocks; }
+		uint64_t deadlineProbeMultiBlocks() const { return m_deadlineProbeMultiBlocks; }
+		uint64_t deadlineProbeIrqdOverruns() const { return m_deadlineProbeIrqdOverruns; }
+		uint64_t deadlineProbeDropped7e() const { return m_deadlineProbeDropped7e; }
+		uint64_t deadlineProbeDropped76() const { return m_deadlineProbeDropped76; }
+#endif
 		std::map<uint32_t, uint64_t>& pcWatch() { return m_pcWatch; }
 #ifdef G1_DSP_TRACE
 		bool armDiagnosticTrace(const char* _path, uint32_t _entryPc, uint32_t _steps);
@@ -179,6 +187,10 @@ namespace g1
 		uint32_t m_lastVector = 0;
 		std::map<uint32_t, uint64_t> m_pcWatch;	// PCs to watch (diagnostics only)
 #ifdef G1_DSP_TRACE
+		bool m_deadlineProbe = false, m_deadlineProbeFine = false;
+		uint64_t m_deadlineProbeLongBlocks = 0, m_deadlineProbeShortBlocks = 0;
+		uint64_t m_deadlineProbeMultiBlocks = 0, m_deadlineProbeIrqdOverruns = 0;
+		uint64_t m_deadlineProbeDropped7e = 0, m_deadlineProbeDropped76 = 0;
 		uint64_t m_dispatchServiced = 0;
 		std::ofstream m_trace, m_traceWrites;
 		uint32_t m_traceEntry = 0, m_traceRemaining = 0, m_traceStep = 0;

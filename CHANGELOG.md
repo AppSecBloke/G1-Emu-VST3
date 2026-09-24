@@ -5,6 +5,17 @@ its line here, in the same commit** (see `CLAUDE.md`). Each entry says who made 
 and how it was checked; the commit is the one that brings the entry (`git log -- CHANGELOG.md`).
 Older entries cite their commit by hand.
 
+## 2026-09-25
+
+- **DSP0 deadline-aware JIT return prototype (Codex; local change, not committed).**
+  Added an opt-in diagnostic DSP-core overlay that selects one-instruction
+  blocks near pending dispatch/peripheral/IRQD deadlines and immediately after
+  interrupt suppression, while retaining the normal 32-instruction maximum
+  elsewhere. Added block-size/host counters and a matched Saw-32, Square-1,
+  Square-32 runner. Verification: PowerShell syntax and static diff checks;
+  CI compilation and ROM-backed behavioural comparison remain pending because
+  this machine has no local CMake/MSVC toolchain.
+
 ## 2026-09-24
 
 - **Bounded first X:`$1` divergence branch trace (Codex; local change, not committed).**

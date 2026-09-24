@@ -692,6 +692,32 @@ int main(int argc, char** argv)
 		std::printf("\n");
 	}
 
+#ifdef G1_DSP_TRACE
+	if(std::getenv("G1_DSP_DEADLINE_PROBE"))
+	{
+		const auto& dsp0 = mc.getDsp(0);
+		const auto& vectors = dsp0.servicedVectors();
+		const auto count = [&](uint32_t vector) -> uint64_t
+		{
+			const auto it = vectors.find(vector);
+			return it == vectors.end() ? 0 : it->second;
+		};
+		std::printf("deadline probe: long blocks %llu, multi-instruction long blocks %llu, short blocks %llu, IRQD overruns %llu\n",
+			static_cast<unsigned long long>(dsp0.deadlineProbeLongBlocks()),
+			static_cast<unsigned long long>(dsp0.deadlineProbeMultiBlocks()),
+			static_cast<unsigned long long>(dsp0.deadlineProbeShortBlocks()),
+			static_cast<unsigned long long>(dsp0.deadlineProbeIrqdOverruns()));
+		std::printf("DSP0 host: words %llu, commands %llu, serviced $7E %llu, serviced $76 %llu\n",
+			static_cast<unsigned long long>(dsp0.hostWords()),
+			static_cast<unsigned long long>(dsp0.hostCommands()),
+			static_cast<unsigned long long>(count(0x7e)),
+			static_cast<unsigned long long>(count(0x76)));
+		std::printf("DSP0 dropped commands: $7E %llu, $76 %llu\n",
+			static_cast<unsigned long long>(dsp0.deadlineProbeDropped7e()),
+			static_cast<unsigned long long>(dsp0.deadlineProbeDropped76()));
+	}
+#endif
+
 	// G1_DUMP=dir: P, X and Y memory of each DSP at the end (to disassemble with dspdis).
 	if(const char* dir = std::getenv("G1_DUMP"))
 		for(uint32_t d = 0; d < g1::g_dspCount; ++d)
