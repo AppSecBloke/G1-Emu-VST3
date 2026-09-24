@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory = $true)][string]$RomPath,
     [string]$OutputDirectory = (Join-Path (Get-Location).Path ('square-output-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))),
     [switch]$FlowTrace,
-    [switch]$CounterTrace
+    [switch]$CounterTrace,
+    [switch]$EarlyFlow
 )
 
 Set-StrictMode -Version Latest
@@ -18,7 +19,7 @@ foreach ($path in @($RomPath, $exe, $modules, $fixture, $buildInfo)) {
     }
 }
 $info = Get-Content -LiteralPath $buildInfo -Raw | ConvertFrom-Json
-if ($info.buildId -notmatch '^CMPM-build8-square(output|voice|flow|x1|history)-' -or
+if ($info.buildId -notmatch '^CMPM-build8-square(output|voice|flow|x1|history|early)-' -or
     $info.executableSha256 -ne (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash) {
     throw 'This bundle is not the bounded Square output diagnostic executable.'
 }
@@ -27,6 +28,9 @@ if ($FlowTrace -and $info.buildId -notmatch '^CMPM-build8-squarex1-') {
 }
 if ($CounterTrace -and $info.buildId -notmatch '^CMPM-build8-squarehistory-') {
     throw 'The requested X:$1 history requires the squarehistory diagnostic executable.'
+}
+if ($EarlyFlow -and $info.buildId -notmatch '^CMPM-build8-squareearly-') {
+    throw 'The requested early control-flow trace requires the squareearly diagnostic executable.'
 }
 if ((Get-Item -LiteralPath $RomPath).Length -ne 524288) {
     throw 'The G1 ROM must be exactly 524288 bytes.'
@@ -47,7 +51,7 @@ $source.Replace($old, '2 7 10 64 64 64 64 3 0 0 0 0 0') |
 
 $names = @('G1_MIDINOTE', 'G1_DSP_WATCH_BLOCKSIZE', 'G1_DSP_FINE_DRAIN_FILE',
            'G1_DSP_OUTPUT_WRITES_FILE', 'G1_DSP_OUTPUT_LINK_FILE',
-           'G1_DSP_OUTPUT_BEGIN', 'G1_DSP_OUTPUT_END', 'G1_DSP_VOICE_FILE', 'G1_DSP_FLOW_FILE', 'G1_DSP_COUNTER_FILE', 'G1_DUMP',
+           'G1_DSP_OUTPUT_BEGIN', 'G1_DSP_OUTPUT_END', 'G1_DSP_VOICE_FILE', 'G1_DSP_FLOW_FILE', 'G1_DSP_COUNTER_FILE', 'G1_DSP_EARLY_FLOW_FILE', 'G1_DUMP',
            'G1_DSP_CAUSAL_HOST_TRACE_FILE', 'G1_DSP_CAUSAL_LINK_TRACE_FILE',
            'G1_DSP_STARTUP_WATCH_FILE', 'G1_DSP_CALLBACK_WINDOW_FILE',
            'G1_DSP_DISPATCH_TRACE_FILE', 'G1_DSP_IRQD_TRACE_FILE',
@@ -70,11 +74,12 @@ try {
         $env:G1_DSP_OUTPUT_END = '237070000'
         $env:G1_DSP_OUTPUT_WRITES_FILE = Join-Path $caseDir 'dsp0-output-writes.csv'
         $env:G1_DSP_OUTPUT_LINK_FILE = Join-Path $caseDir 'dsp0-output-link.csv'
-        if ($info.buildId -match '^CMPM-build8-square(voice|flow|x1|history)-') {
+        if ($info.buildId -match '^CMPM-build8-square(voice|flow|x1|history|early)-') {
             $env:G1_DSP_VOICE_FILE = Join-Path $caseDir 'dsp0-voice-producer.csv'
         }
         if ($FlowTrace) { $env:G1_DSP_FLOW_FILE = Join-Path $caseDir 'dsp0-voice-flow.csv' }
         if ($CounterTrace) { $env:G1_DSP_COUNTER_FILE = Join-Path $caseDir 'dsp0-x1-history.csv' }
+        if ($EarlyFlow) { $env:G1_DSP_EARLY_FLOW_FILE = Join-Path $caseDir 'dsp0-early-flow.csv' }
         $env:G1_DUMP = $dumpDir
         if ($case.BlockSize -eq 1) { $env:G1_DSP_WATCH_BLOCKSIZE = '1' }
         else { Remove-Item -LiteralPath Env:G1_DSP_WATCH_BLOCKSIZE -ErrorAction SilentlyContinue }
@@ -110,7 +115,7 @@ try {
             $targetWrite.address -ne '1760') {
             throw "$($case.Name) no longer has the aligned output write #437; partial data is in $output"
         }
-        if ($info.buildId -match '^CMPM-build8-square(voice|flow|x1|history)-') {
+        if ($info.buildId -match '^CMPM-build8-square(voice|flow|x1|history|early)-') {
             $voice = @(Import-Csv -LiteralPath $env:G1_DSP_VOICE_FILE)
             $sourceWrites = @($voice | Where-Object { $_.pc -eq '580' -and $_.phase -eq 'post' })
             $targetProducer = @($voice | Where-Object { $_.pc -eq '1650' -and $_.phase -eq 'post' -and $_.output_write_sequence -eq '437' })
@@ -146,6 +151,13 @@ try {
                 throw "$($case.Name) lacks the relevant X:`$1 increment history; partial data is in $output"
             }
         }
+        if ($EarlyFlow) {
+            $earlyRecords = @(Import-Csv -LiteralPath $env:G1_DSP_EARLY_FLOW_FILE)
+            if (-not $earlyRecords.Count -or
+                -not @($earlyRecords | Where-Object { $_.pc -eq '835' -and $_.phase -eq 'post' }).Count) {
+                throw "$($case.Name) lacks the bounded counter-divergence flow trace; partial data is in $output"
+            }
+        }
         $firstNonzeroWrite = $writes | Where-Object { [long]$_.new -ne 0 } | Select-Object -First 1
         $firstNonzeroLink = $links | Where-Object { [long]$_.link0 -ne 0 -or [long]$_.link1 -ne 0 } | Select-Object -First 1
         $summary += [pscustomobject]@{
@@ -159,12 +171,13 @@ try {
             firstNonzeroWritePc = if ($null -ne $firstNonzeroWrite) { $firstNonzeroWrite.instruction_pc } else { '' }
             firstNonzeroLinkCycle = if ($null -ne $firstNonzeroLink) { $firstNonzeroLink.cycle } else { '' }
             targetWrite437Value = $targetWrite.new
-            source0244WriteCount = if ($info.buildId -match '^CMPM-build8-square(voice|flow|x1|history)-') { $sourceWrites.Count } else { '' }
+            source0244WriteCount = if ($info.buildId -match '^CMPM-build8-square(voice|flow|x1|history|early)-') { $sourceWrites.Count } else { '' }
             postNoteFlowRecords = if ($FlowTrace) { $flow.Count } else { '' }
             lastX1ProducerSequence = if ($FlowTrace) { $producer.sequence } else { '' }
             x1AtFirstPostNoteBranch = if ($FlowTrace) { $branch.x1_cell } else { '' }
             x1HistoryRecords = if ($CounterTrace) { $counter.Count } else { '' }
             x1AfterRelevantIncrement = if ($CounterTrace) { $relevant[0].x1_old_or_new } else { '' }
+            earlyFlowRecords = if ($EarlyFlow) { $earlyRecords.Count } else { '' }
             dsp0PMemorySha256 = (Get-FileHash -LiteralPath (Join-Path $dumpDir 'dsp0_p.hex') -Algorithm SHA256).Hash
         }
     }
@@ -187,7 +200,7 @@ $summary | Export-Csv -LiteralPath (Join-Path $output 'comparison.csv') -NoTypeI
     executableSha256 = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
     romSha256 = (Get-FileHash -LiteralPath $RomPath -Algorithm SHA256).Hash
     squarePatchSha256 = (Get-FileHash -LiteralPath $square -Algorithm SHA256).Hash
-    observationWindow = if ($CounterTrace) { 'DSP0 X:$1 direct-writer history, cycles 211250000 through 236977800, plus established output and voice probes' } elseif ($FlowTrace) { 'DSP0 X:$1 producer/control flow, cycles 236976000 through 236979500, plus established output and voice probes' } else { 'DSP0 cycles 236970000 through 237070000, with JIT and DMA Y output writes plus each link sample' }
+    observationWindow = if ($EarlyFlow) { 'DSP0 counter branch/control flow, cycles 211263000 through 211265500, plus established output and voice probes' } elseif ($CounterTrace) { 'DSP0 X:$1 direct-writer history, cycles 211250000 through 236977800, plus established output and voice probes' } elseif ($FlowTrace) { 'DSP0 X:$1 producer/control flow, cycles 236976000 through 236979500, plus established output and voice probes' } else { 'DSP0 cycles 236970000 through 237070000, with JIT and DMA Y output writes plus each link sample' }
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'experiment-info.json') -Encoding UTF8
 $zip = $output + '.zip'
 Compress-Archive -Path (Join-Path $output '*') -DestinationPath $zip

@@ -7,6 +7,14 @@ Older entries cite their commit by hand.
 
 ## 2026-09-24
 
+- **Bounded first X:`$1` divergence branch trace (Codex; local change, not committed).**
+  Added an observation-only DSP0 instruction/SR trace for cycles
+  211,263,000–211,265,500, where the matched counter histories first separate:
+  Square-1 resets X:`$1` at P:`$0173`, while Square-32 executes another
+  P:`$0343` increment. The runner retains its ROM, patch, audio, P-memory and
+  fine-drain checks. Verification: static diff and PowerShell syntax checks;
+  CI compilation and ROM-backed branch comparison remain pending.
+
 - **Bounded DSP0 X:`$1` write history (Codex; local change, not committed).**
   Added a diagnostic-only trace of the three direct X:`$1` writers, recording
   old/new values and JIT source registers from the patch-upload phase through

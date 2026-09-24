@@ -181,10 +181,13 @@ namespace dsp56k
 
 	inline void g1FlowTraceEmit(const DSP& dsp, TWord pc, bool after)
 	{
+		const char* earlyPath = std::getenv("G1_DSP_EARLY_FLOW_FILE");
+		const bool early = earlyPath && *earlyPath;
 		if(g1OutputTrace().target.load(std::memory_order_acquire) != &dsp ||
-			!g1FlowTracePc(pc) || dsp.getCycles() < 236976000 ||
-			dsp.getCycles() > 236979500) return;
-		const char* path = std::getenv("G1_DSP_FLOW_FILE");
+			!g1FlowTracePc(pc) ||
+			dsp.getCycles() < (early ? 211263000u : 236976000u) ||
+			dsp.getCycles() > (early ? 211265500u : 236979500u)) return;
+		const char* path = early ? earlyPath : std::getenv("G1_DSP_FLOW_FILE");
 		if(!path || !*path) return;
 		static std::ofstream out;
 		static uint64_t sequence = 0;
