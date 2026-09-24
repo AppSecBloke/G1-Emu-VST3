@@ -16,15 +16,18 @@ namespace dsp56k
 		const uint32_t finePeriod = 0, const uint64_t fineLastClock = 0,
 		const bool hasFine = false, const uint32_t nextDeadline = 0)
 	{
-		const char* path = std::getenv("G1_DSP_ESSI_TRACE_FILE");
-		const char* beginText = std::getenv("G1_DSP_DMA_TRACE_BEGIN");
-		const char* endText = std::getenv("G1_DSP_DMA_TRACE_END");
+		// The runner starts a new process for each case. Resolve its trace settings
+		// once: this hook is reached on every peripheral clock poll, including Saw.
+		static const char* path = std::getenv("G1_DSP_ESSI_TRACE_FILE");
+		static const char* beginText = std::getenv("G1_DSP_DMA_TRACE_BEGIN");
+		static const char* endText = std::getenv("G1_DSP_DMA_TRACE_END");
 		if(!path || !*path || !beginText || !endText)
 			return;
 		auto& dsp = peripherals.getDSP();
 		const auto cycles = dsp.getCycles();
-		if(cycles < std::strtoull(beginText, nullptr, 10) ||
-			cycles > std::strtoull(endText, nullptr, 10))
+		static const auto begin = std::strtoull(beginText, nullptr, 10);
+		static const auto end = std::strtoull(endText, nullptr, 10);
+		if(cycles < begin || cycles > end)
 			return;
 		static std::mutex mutex;
 		std::lock_guard<std::mutex> lock(mutex);

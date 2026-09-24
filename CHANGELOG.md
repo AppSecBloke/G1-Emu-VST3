@@ -14,8 +14,10 @@ Older entries cite their commit by hand.
   Actions run 35935542462 failed at configure: pinned `esaiclock.cpp` uses
   `ic - m_lastClock` and has a fine-link catch-up loop. No peripheral or
   execution behaviour was changed. Verification: pinned-source anchor review,
-  static diff and PowerShell syntax checks; CI build and ROM-backed A/B capture
-  remain pending.
+  static diff and PowerShell syntax checks. The CI package built, but the first
+  local capture spent minutes in the untraced Saw case because the clock hook
+  queried environment variables on every poll; the trace settings are now
+  cached per process. A fresh CI build and ROM-backed A/B capture are pending.
 
 - **Internal DSP0 DMA3 interrupt diagnostic (Codex; local change, not committed).**
   Added an opt-in, cycle-bounded trace in the diagnostic dsp56300 build copy at
