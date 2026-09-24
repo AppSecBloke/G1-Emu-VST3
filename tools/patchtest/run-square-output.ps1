@@ -102,9 +102,11 @@ try {
         }
         if ($info.buildId -like 'CMPM-build8-squarevoice-*') {
             $voice = @(Import-Csv -LiteralPath $env:G1_DSP_VOICE_FILE)
-            if (-not $voice.Count -or
-                -not @($voice | Where-Object { $_.pc -eq '580' -and $_.phase -eq 'post' }).Count -or
-                -not @($voice | Where-Object { $_.pc -eq '1650' -and $_.phase -eq 'pre' }).Count) {
+            $sourceWrites = @($voice | Where-Object { $_.pc -eq '580' -and $_.phase -eq 'post' })
+            $targetProducer = @($voice | Where-Object { $_.pc -eq '1650' -and $_.phase -eq 'post' -and $_.output_write_sequence -eq '437' })
+            if (-not $voice.Count -or $targetProducer.Count -ne 1 -or
+                ($case.Audible -and -not $sourceWrites.Count) -or
+                (-not $case.Audible -and $sourceWrites.Count)) {
                 throw "$($case.Name) lacks the bounded producer trace; partial data is in $output"
             }
         }
@@ -121,6 +123,7 @@ try {
             firstNonzeroWritePc = if ($null -ne $firstNonzeroWrite) { $firstNonzeroWrite.instruction_pc } else { '' }
             firstNonzeroLinkCycle = if ($null -ne $firstNonzeroLink) { $firstNonzeroLink.cycle } else { '' }
             targetWrite437Value = $targetWrite.new
+            source0244WriteCount = if ($info.buildId -like 'CMPM-build8-squarevoice-*') { $sourceWrites.Count } else { '' }
             dsp0PMemorySha256 = (Get-FileHash -LiteralPath (Join-Path $dumpDir 'dsp0_p.hex') -Algorithm SHA256).Hash
         }
     }

@@ -7,6 +7,14 @@ Older entries cite their commit by hand.
 
 ## 2026-09-24
 
+- **Square voice runner validation correction (Codex; local change, not committed).**
+  Made the diagnostic runner accept the observed absence of P:`$0244` execution
+  in silent Square-32 while requiring it in audible Square-1, and record each
+  case's source-write count. Verification: the complete ROM-backed matched
+  runner passed with Square-32 silent and Square-1 audible, identical DSP0
+  P-memory, output write #437 at zero versus 483, and zero versus 29
+  P:`$0244` executions; diff check passed. No DSP behaviour changed.
+
 - **Bounded Square voice-producer trace (Codex; local change, not committed).**
   Added diagnostic-only pre/post JIT register and source-memory observations
   around P:`$023E–$0244` and P:`$0663–$0672`, with X:`$24–$26` write values and
