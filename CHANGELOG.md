@@ -7,6 +7,14 @@ Older entries cite their commit by hand.
 
 ## 2026-09-24
 
+- **Bounded DSP0 X:`$1` write history (Codex; local change, not committed).**
+  Added a diagnostic-only trace of the three direct X:`$1` writers, recording
+  old/new values and JIT source registers from the patch-upload phase through
+  the first post-note branch. The matched runner retains the fine-drain and
+  silent/audible controls and checks that the relevant P:`$0343` update was
+  captured in both cases. Verification: static diff and PowerShell syntax
+  checks; CI compilation and ROM-backed comparison remain pending.
+
 - **Bounded DSP0 X:`$1` producer trace (Codex; local change, not committed).**
   Extended the diagnostic-only control-flow window just far enough before the
   first post-note P:`$0172` branch to capture P:`$0340–$0343` counter updates,

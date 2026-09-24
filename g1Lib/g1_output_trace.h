@@ -150,6 +150,35 @@ namespace dsp56k
 		return pc >= 0x100 && pc <= 0x700;
 	}
 
+	inline bool g1CounterTracePc(TWord pc)
+	{
+		return pc == 0x166 || pc == 0x173 || pc == 0x343;
+	}
+
+	inline void g1CounterTraceEmit(const DSP& dsp, TWord pc, bool after)
+	{
+		if(g1OutputTrace().target.load(std::memory_order_acquire) != &dsp ||
+			!g1CounterTracePc(pc) || dsp.getCycles() < 211250000 ||
+			dsp.getCycles() > 236977800) return;
+		const char* path = std::getenv("G1_DSP_COUNTER_FILE");
+		if(!path || !*path) return;
+		static std::ofstream out;
+		static uint64_t sequence = 0;
+		if(!out.is_open())
+		{
+			out.open(path, std::ios::out | std::ios::trunc);
+			if(out)
+				out << "sequence,phase,pc,opcode,block_entry_cycle,block_pc,output_write_sequence,x1_old_or_new,a,b,x0,sr\n";
+		}
+		if(!out) return;
+		const auto& regs = g1VoiceTrace().regs;
+		out << ++sequence << ',' << (after ? "post" : "pre") << ',' << pc
+			<< ',' << dsp.memory().get(MemArea_P, pc) << ',' << dsp.getCycles()
+			<< ',' << dsp.getPC().toWord() << ',' << g1OutputTrace().sequence
+			<< ',' << dsp.memory().get(MemArea_X, 1) << ',' << regs.a
+			<< ',' << regs.b << ',' << regs.x0 << ',' << regs.sr << '\n';
+	}
+
 	inline void g1FlowTraceEmit(const DSP& dsp, TWord pc, bool after)
 	{
 		if(g1OutputTrace().target.load(std::memory_order_acquire) != &dsp ||

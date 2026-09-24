@@ -134,23 +134,25 @@ if(G1_DSP_TRACE)
 	{
 		g1VoiceTraceEmit(*dsp, pc, after != 0);
 		g1FlowTraceEmit(*dsp, pc, after != 0);
+		g1CounterTraceEmit(*dsp, pc, after != 0);
 	}
 
 	void JitBlock::g1TraceVoiceOp(TWord pc, bool after)
 	{
 		const bool voice = g1VoiceTracePc(pc) && std::getenv("G1_DSP_VOICE_FILE");
 		const bool flow = g1FlowTracePc(pc) && std::getenv("G1_DSP_FLOW_FILE");
-		if((!voice && !flow) ||
+		const bool counter = g1CounterTracePc(pc) && std::getenv("G1_DSP_COUNTER_FILE");
+		if((!voice && !flow && !counter) ||
 			g1OutputTrace().target.load(std::memory_order_acquire) != &m_dsp) return;
 
 		const SkipLabel skip(m_asm);
 		{
 			const RegScratch pointer(*this), cycle(*this), bound(*this);
 			m_asm.mov(r64(cycle), m_mem.makePtr(pointer, &m_dsp.getCycles(), sizeof(uint64_t)));
-			m_asm.mov(r64(bound), asmjit::Imm(voice ? 236970000 : 236976000));
+			m_asm.mov(r64(bound), asmjit::Imm(counter ? 211250000 : voice ? 236970000 : 236976000));
 			m_asm.cmp(r64(bound), r64(cycle));
 			m_asm.jg(skip.get());
-			m_asm.mov(r64(bound), asmjit::Imm(voice ? 237070000 : 236979500));
+			m_asm.mov(r64(bound), asmjit::Imm(counter ? 236977800 : voice ? 237070000 : 236979500));
 			m_asm.cmp(r64(cycle), r64(bound));
 			m_asm.jg(skip.get());
 		}
