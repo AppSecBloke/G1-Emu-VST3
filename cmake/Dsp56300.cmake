@@ -119,6 +119,75 @@ g1_dsp_replace(dma.cpp
 
 # Observe ESSI clock catch-up, DMA3 requests and vector-$1E injection only in diagnostic builds.
 if(G1_DSP_TRACE)
+	# Observe direct JIT Y writes at their original store site. The observer reads
+	# the previous value and returns; the existing native store still executes.
+	g1_dsp_replace(jitmem.h
+		"Jitmem(JitBlock& _block) : m_block(_block) {}"
+		"Jitmem(JitBlock& _block) : m_block(_block) {}\n\t\tvoid g1SetTracePc(TWord pc) { m_g1TracePc = pc; }")
+	g1_dsp_replace(jitmem.h
+		"JitBlock& m_block;"
+		"void g1TraceYWrite(const JitRegGP& offset, const DspValue& src) const;\n\t\tTWord m_g1TracePc = 0;\n\t\tJitBlock& m_block;")
+	g1_dsp_replace(jitops.cpp
+		"m_pcCurrentOp = _pc;\n\t\tm_opWordA = _op;"
+		"m_pcCurrentOp = _pc;\n\t\tm_block.mem().g1SetTracePc(_pc);\n\t\tm_opWordA = _op;")
+	g1_dsp_replace(jitmem.cpp
+		"#include \"jitregtracker.h\""
+		"#include \"jitregtracker.h\"\n#include \"g1_output_trace.h\"")
+	g1_dsp_replace(jitmem.cpp
+		"void callDSPMemWrite(DSP* const _dsp, const EMemArea _area, const TWord _offset, const TWord _value)"
+		[=[void callG1JitYWrite(DSP* dsp, TWord pc, TWord address, TWord value)
+	{
+		g1OutputTraceWrite(*dsp, "jit", pc, MemArea_Y, address, value);
+	}
+
+	void Jitmem::g1TraceYWrite(const JitRegGP& offset, const DspValue& src) const
+	{
+		if(!std::getenv("G1_DSP_OUTPUT_WRITES_FILE") ||
+			g1OutputTrace().target.load(std::memory_order_acquire) != &m_block.dsp()) return;
+		const FuncArg r0(m_block, 0), r1(m_block, 1), r2(m_block, 2), r3(m_block, 3);
+		if(src.isImm24())
+		{
+			m_block.asm_().mov(r32(r2), r32(offset));
+			m_block.asm_().mov(r32(r3), asmjit::Imm(src.imm24()));
+		}
+		else if(m_block.stack().isUsedFuncArg(offset) && m_block.stack().isUsedFuncArg(src.get()))
+		{
+			const RegScratch temp(m_block);
+			m_block.asm_().mov(r32(temp), r32(src.get()));
+			m_block.asm_().mov(r32(r2), r32(offset));
+			m_block.asm_().mov(r32(r3), r32(temp));
+		}
+		else if(m_block.stack().isUsedFuncArg(src.get()))
+		{
+			m_block.asm_().mov(r32(r3), r32(src.get()));
+			m_block.asm_().mov(r32(r2), r32(offset));
+		}
+		else
+		{
+			m_block.asm_().mov(r32(r2), r32(offset));
+			m_block.asm_().mov(r32(r3), r32(src.get()));
+		}
+		makeDspPtr(r0);
+		m_block.asm_().mov(r32(r1), asmjit::Imm(m_g1TracePc));
+		m_block.stack().call(asmjit::func_as_ptr(&callG1JitYWrite));
+	}
+
+	void callDSPMemWrite(DSP* const _dsp, const EMemArea _area, const TWord _offset, const TWord _value)]=])
+	g1_dsp_replace(jitmem.cpp
+		"DspValue tempXY(m_block);\n\t\t\tauto p = getMemAreaPtr(tempXY, _area, _offset, std::move(_ref));"
+		"if(_area == MemArea_Y) g1TraceYWrite(_offset, _src);\n\t\t\tDspValue tempXY(m_block);\n\t\t\tauto p = getMemAreaPtr(tempXY, _area, _offset, std::move(_ref));")
+	g1_dsp_replace(jitmem.cpp
+		"DspValue tempXY(m_block);\n\t\tauto px = getMemAreaPtr(tempXY, MemArea_X, _offset, noRef());"
+		"g1TraceYWrite(_offset, _srcY);\n\t\tDspValue tempXY(m_block);\n\t\tauto px = getMemAreaPtr(tempXY, MemArea_X, _offset, noRef());")
+	g1_dsp_replace(jitmem.cpp
+		"auto p = getMemAreaPtr(_area, _offset, std::move(_ref), false);\n\t\twriteDspMemory(p, _src);"
+		"if(_area == MemArea_Y)\n\t\t{\n\t\t\tconst RegGP address(m_block);\n\t\t\tm_block.asm_().mov(r32(address), asmjit::Imm(_offset));\n\t\t\tg1TraceYWrite(address.get(), _src);\n\t\t}\n\t\tauto p = getMemAreaPtr(_area, _offset, std::move(_ref), false);\n\t\twriteDspMemory(p, _src);")
+	g1_dsp_replace(jitmem.cpp
+		"p = getMemAreaPtr(MemArea_Y, _offset, std::move(p), false);\n\t\twriteDspMemory(p, _srcY);\n\t\treturn p;"
+		"const RegGP address(m_block);\n\t\tm_block.asm_().mov(r32(address), asmjit::Imm(_offset));\n\t\tg1TraceYWrite(address.get(), _srcY);\n\t\tp = getMemAreaPtr(MemArea_Y, _offset, std::move(p), false);\n\t\twriteDspMemory(p, _srcY);\n\t\treturn p;")
+	g1_dsp_replace(dma.cpp
+		"auto& dsp = m_peripherals.getDSP();\n\t\tif (isPeripheralAddr(_area, _addr))\n\t\t\tdsp.getPeriph(_area)->write(_addr | 0xff0000, _value);"
+		"auto& dsp = m_peripherals.getDSP();\n\t\tif(_area == MemArea_Y && g1OutputCell(_addr))\n\t\t\tg1OutputTraceWrite(dsp, \"dma\", dsp.getPC().toWord(), _area, _addr, _value,\n\t\t\t\tgetSourceSpace(), m_dsr, _value);\n\t\tif (isPeripheralAddr(_area, _addr))\n\t\t\tdsp.getPeriph(_area)->write(_addr | 0xff0000, _value);")
 	# Separate the real peripheral callback from the JIT block that follows it.
 	# These calls and the queue accessor exist only in the diagnostic build copy.
 	g1_dsp_replace(dsp.h
@@ -218,7 +287,7 @@ if(G1_DSP_TRACE)
 		"while(!m_pendingExternalInterrupts.empty())\n\t\t{\n\t\t\tconst auto vector = m_pendingExternalInterrupts.front();\n\t\t\tg1TraceCallbackWindowState(\"external_clear_pre\", vector);\n\t\t\tm_pendingExternalInterrupts.pop_front();\n\t\t\tg1TraceCallbackWindowState(\"external_clear_post\", vector);\n\t\t\tinjectInterrupt(vector);\n\t\t}")
 	g1_dsp_replace(dma.cpp
 		"#include \"interrupts.h\""
-		"#include \"interrupts.h\"\n#include \"g1_dma_trace.h\"")
+		"#include \"interrupts.h\"\n#include \"g1_dma_trace.h\"\n#include \"g1_output_trace.h\"")
 	g1_dsp_replace(dma.cpp
 		"void DmaChannel::triggerByRequest()\n\t{\n\t\tif(!bittest(m_dcr, De))"
 		"void DmaChannel::triggerByRequest()\n\t{\n\t\tg1TraceDma3(\"request_enter\", m_peripherals, m_index, m_dcr, m_dsr, m_ddr, m_dco, m_dma.getDSTR());\n\t\tif(!bittest(m_dcr, De))")
@@ -281,7 +350,7 @@ if(g1_cmpm_source_index EQUAL -1)
 	message(FATAL_ERROR "CMPM correction is not in the dsp56kEmu source list")
 endif()
 if(G1_DSP_TRACE)
-	foreach(name IN ITEMS dsp.cpp dma.cpp esaiclock.cpp)
+	foreach(name IN ITEMS dsp.cpp dma.cpp esaiclock.cpp jitmem.cpp jitops.cpp)
 		list(FIND g1_dsp_build_sources "${g1_dsp_overlay}/${name}" g1_trace_source_index)
 		if(g1_trace_source_index EQUAL -1)
 			message(FATAL_ERROR "${name} diagnostic overlay is not in the dsp56kEmu source list")

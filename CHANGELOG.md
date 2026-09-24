@@ -7,6 +7,14 @@ Older entries cite their commit by hand.
 
 ## 2026-09-24
 
+- **Bounded post-note Square output-path diagnostic (Codex; local change, not committed).**
+  Added diagnostic-only JIT/DMA observers for DSP0 writes to the alternating
+  Y output cells, per-sample link snapshots and a two-case Square runner.
+  The overlay preserves the original stores and simulated cycles; the runner
+  gates the known silent/audible results and packages source-state and P/X/Y
+  evidence. Verification: pinned-source overlay anchors, PowerShell syntax and
+  diff checks; CI compilation and local ROM-backed comparison remain pending.
+
 - **Bounded seven-interrupt JIT dispatch experiment (Codex; local change, not committed).**
   Added an opt-in diagnostic-core overlay that rebuilds cached DSP0 JIT blocks
   at one-instruction granularity only after the aligned ESSI callback has queued

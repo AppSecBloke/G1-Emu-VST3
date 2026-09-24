@@ -16,7 +16,7 @@ foreach ($path in @($RomPath, $exe, $modules, $fixture, $buildInfo)) {
     }
 }
 $info = Get-Content -LiteralPath $buildInfo -Raw | ConvertFrom-Json
-if ($info.buildId -notlike 'CMPM-build8-squarefinedrain-*' -or
+if ($info.buildId -notmatch '^CMPM-build8-square(finedrain|output)-' -or
     $info.executableSha256 -ne (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash) {
     throw 'This bundle is not the bounded fine-drain diagnostic executable.'
 }

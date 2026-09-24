@@ -4,6 +4,7 @@
 #include "dsp56kEmu/jit.h"
 #ifdef G1_DSP_TRACE
 #include "g1_essi_trace.h"
+#include "g1_output_trace.h"
 #endif
 
 #include <algorithm>
@@ -75,7 +76,10 @@ namespace g1
 	{
 #ifdef G1_DSP_TRACE
 		if(m_index == 0)
+		{
 			dsp56k::g1SetEssiTimelineTarget(reinterpret_cast<uintptr_t>(&m_dsp));
+			dsp56k::g1OutputTraceSetTarget(&m_dsp);
+		}
 #endif
 		auto config = m_dsp.getJit().getConfig();
 		config.aguSupportBitreverse = true;
@@ -817,6 +821,10 @@ namespace g1
 			b.words[i] = mem.get(dsp56k::MemArea_Y, p0 + i);
 			b.words[9 + i] = mem.get(dsp56k::MemArea_Y, p1 + i);
 		}
+#ifdef G1_DSP_TRACE
+		if(m_index == 0)
+			dsp56k::g1OutputTraceLink(m_dsp, b.index, p0, p1, b.words[0], b.words[1]);
+#endif
 		for(size_t i = 0; i < b.words.size(); ++i)
 		{
 			const auto v = static_cast<int32_t>(b.words[i] << 8) >> 8;

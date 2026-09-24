@@ -298,6 +298,28 @@ experimental audio result is deliberately not pre-gated. The baseline controls
 must still reproduce Saw-32 audible, Square-32 silent and Square-1 audible.
 The ROM remains local and is not packaged.
 
+## Post-note Square output-path comparison
+
+The `squareoutput` diagnostic bundle compares the silent seven-interrupt
+experimental Square-32 run with audible Square-1. It observes DSP0 cycles
+236,970,000–237,070,000, spanning note-on, the post-note host sequence and the
+first audible Square-1 link samples. It records every JIT or DMA write to the
+alternating Y:`$06C0/$06C1/$06E0/$06E1` output cells, with prior/new value,
+instruction PC/opcode (or DMA source address/value), and nearby X/Y state.
+It also records each DSP0 link sample in the window. A JIT write's cycle is
+the block-entry cycle, not a fabricated per-instruction cycle; use its exact
+instruction PC and sequence to order writes within a block.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run-square-output.ps1 -RomPath 'C:\path\NORD-MODULAR-RACK-VER-3.03.BIN'
+```
+
+The runner requires Square-32 to remain silent and Square-1 audible, confirms
+the seven natural `$1E` clears and includes ROM-free hashes and P/X/Y dumps.
+If observation itself changes either audio result, the runner fails and leaves
+the partial files for review. The overlay only calls a read-only observer before
+the original Y store; it does not replace the store or alter simulated cycles.
+
 ## Overlapping-note capture
 
 The same bundle can capture two overlapping notes through the G1 MIDI IN path. Run this
