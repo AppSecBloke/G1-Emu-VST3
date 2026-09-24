@@ -363,6 +363,17 @@ namespace g1
 		return true;
 	}
 
+	bool Dsp::armCausalLinkTrace(const char* _path)
+	{
+		if(m_index != 0 || !_path || !_path[0] || m_causalLinkTrace.is_open()) return false;
+		m_causalLinkTrace.open(_path, std::ios::out | std::ios::trunc);
+		if(!m_causalLinkTrace) return false;
+		m_causalLinkTrace << "event,cycle,pc,block,link0,link1,peak,host_words,host_commands,irqd_count,x5,x6,x1d,x1e,x1f\n";
+		m_causalLinkCount = 0;
+		m_causalFirstNonzero = false;
+		return true;
+	}
+
 	bool Dsp::settleEventsActive() const
 	{
 		const auto focus = static_cast<int32_t>(m_settleFocusMs);
@@ -757,6 +768,27 @@ namespace g1
 			const auto v = static_cast<int32_t>(b.words[i] << 8) >> 8;
 			m_linkPeak[i] = std::max<uint32_t>(m_linkPeak[i], static_cast<uint32_t>(v < 0 ? -v : v));
 		}
+#ifdef G1_DSP_TRACE
+		if(m_causalLinkTrace.is_open())
+		{
+			const bool nonzero = b.words[0] != 0 || b.words[1] != 0;
+			const bool firstNonzero = nonzero && !m_causalFirstNonzero;
+			if(firstNonzero) m_causalFirstNonzero = true;
+			if(m_causalLinkCount < 32 || m_causalLinkCount % 864 == 0 || firstNonzero)
+			{
+				m_causalLinkTrace << (firstNonzero ? "first_nonzero" : "sample") << ','
+					<< m_dsp.getCycles() << ',' << m_dsp.getPC().toWord() << ',' << b.index
+					<< ',' << b.words[0] << ',' << b.words[1] << ','
+					<< std::max(m_linkPeak[0], m_linkPeak[1]) << ','
+					<< m_hostWords << ',' << m_hostCommands << ',' << m_irqdCount
+					<< ',' << p0 << ',' << p1
+					<< ',' << mem.get(dsp56k::MemArea_X, 0x1d)
+					<< ',' << mem.get(dsp56k::MemArea_X, 0x1e)
+					<< ',' << mem.get(dsp56k::MemArea_X, 0x1f) << '\n';
+			}
+			++m_causalLinkCount;
+		}
+#endif
 		m_linkOut.push_back(b);
 	}
 
@@ -922,6 +954,9 @@ namespace g1
 	void Dsp::hostWord(const uint32_t _word)
 	{
 #ifdef G1_DSP_TRACE
+		if(m_index == 0)
+			dsp56k::g1TraceCausalHost("word_enter", m_dsp, _word,
+				m_hostWords, m_hostCommands, m_nextIrqd, hdi08().hasRXData());
 		const bool traceHost = settleEventsActive();
 		const auto hostBefore = traceHost ? settleEventCapture() : SettleEventSnapshot{};
 #endif
@@ -947,6 +982,9 @@ namespace g1
 		hdi08().writeRX(&_word, 1);
 		++m_hostWords;
 #ifdef G1_DSP_TRACE
+		if(m_index == 0)
+			dsp56k::g1TraceCausalHost("word_written", m_dsp, _word,
+				m_hostWords, m_hostCommands, m_nextIrqd, hdi08().hasRXData());
 		if(_word == 195)
 			dsp56k::g1TraceEssiHostWord195(reinterpret_cast<uintptr_t>(&m_dsp),
 				m_dsp.getCycles(), m_dsp.getPC().toWord());
@@ -968,6 +1006,9 @@ namespace g1
 		if(!m_booted)
 			return;
 #ifdef G1_DSP_TRACE
+		if(m_index == 0)
+			dsp56k::g1TraceCausalHost("command_enter", m_dsp, _vector,
+				m_hostWords, m_hostCommands, m_nextIrqd, hdi08().hasRXData());
 		const bool traceHost = settleEventsActive();
 		const auto hostBefore = traceHost ? settleEventCapture() : SettleEventSnapshot{};
 		const bool traceFirstCommand = _vector == 0x7e && m_settleHostBlocksTriggered &&
@@ -1017,6 +1058,9 @@ namespace g1
 		if(m_dsp.hasPendingInterrupts())
 		{
 #ifdef G1_DSP_TRACE
+			if(m_index == 0)
+				dsp56k::g1TraceCausalHost("command_dropped", m_dsp, _vector,
+					m_hostWords, m_hostCommands, m_nextIrqd, hdi08().hasRXData());
 			if(traceHost)
 				settleEvent("host_command_dropped", _vector, hostBefore, settleEventCapture());
 #endif
@@ -1025,6 +1069,9 @@ namespace g1
 		hdi08().writeHostCommand(_vector);
 		++m_hostCommands;
 #ifdef G1_DSP_TRACE
+		if(m_index == 0)
+			dsp56k::g1TraceCausalHost("command_written", m_dsp, _vector,
+				m_hostWords, m_hostCommands, m_nextIrqd, hdi08().hasRXData());
 		if(traceHost)
 			settleEvent("host_command_written", _vector, hostBefore, settleEventCapture());
 #endif

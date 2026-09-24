@@ -7,6 +7,14 @@ Older entries cite their commit by hand.
 
 ## 2026-09-24
 
+- **Bounded host-to-output causal diagnostic (Codex; local change, not committed).**
+  Added opt-in DSP0 host transaction and post-note link-output records to compare
+  the first divergent upload/control event with the later missing output state.
+  The Saw-32 audible, Square-32 silent, Square-1 audible gates remain mandatory;
+  no DSP, IRQD, ESSI, DMA, scheduler, host-command or JIT behaviour changed.
+  Verification: diff and PowerShell syntax checks; CI compilation and ROM-backed
+  causal comparison remain pending.
+
 - **Bounded IRQD source diagnostic (Codex; local change, not committed).**
   Added opt-in, cycle-stamped DSP0 records for wrapper-generated vector `$16`
   requests and actual service callbacks, correlated with the existing ESSI and

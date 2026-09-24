@@ -173,6 +173,34 @@ namespace dsp56k
 			<< dsp.getPeriph(0)->getTargetClock() << '\n';
 	}
 
+	inline void g1TraceCausalHost(const char* event, DSP& dsp, const uint32_t value,
+		const uint64_t wordCount, const uint64_t commandCount, const uint64_t nextIrqd,
+		const bool rxData)
+	{
+		static const char* path = std::getenv("G1_DSP_CAUSAL_HOST_TRACE_FILE");
+		static const char* beginText = std::getenv("G1_DSP_CAUSAL_HOST_TRACE_BEGIN");
+		static const char* endText = std::getenv("G1_DSP_CAUSAL_HOST_TRACE_END");
+		if(!path || !*path || !beginText || !endText) return;
+		static const uint64_t begin = std::strtoull(beginText, nullptr, 10);
+		static const uint64_t end = std::strtoull(endText, nullptr, 10);
+		const auto cycle = dsp.getCycles();
+		if(cycle < begin || cycle > end) return;
+		static std::ofstream out(path, std::ios::out | std::ios::trunc);
+		static bool header = false;
+		if(!out) return;
+		if(!header)
+		{
+			out << "event,cycle,pc,value,host_words,host_commands,next_irqd,pending,external_pending,rx_data,peripheral_due,peripheral_target_clock\n";
+			header = true;
+		}
+		out << event << ',' << cycle << ',' << dsp.getPC().toWord() << ',' << value
+			<< ',' << wordCount << ',' << commandCount << ',' << nextIrqd << ','
+			<< dsp.hasPendingInterrupts() << ',' << dsp.hasPendingExternalInterrupts()
+			<< ',' << rxData << ','
+			<< dsp.getPeriph(0)->isDue(dsp.getInstructionCounter(), cycle) << ','
+			<< dsp.getPeriph(0)->getTargetClock() << '\n';
+	}
+
 	inline void g1TraceDispatchStep(const G1DispatchSnapshot& before,
 		const G1DispatchSnapshot& after, const uint32_t cause)
 	{

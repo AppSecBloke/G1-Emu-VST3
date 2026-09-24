@@ -234,6 +234,16 @@ these rows to `dsp0-dispatch.csv` by cycle to reconstruct interrupt entry/return
 and ESSI callback selection. This traces the wrapper's request source without
 changing its timing or the pinned core's interrupt queue.
 
+The `squarecausal` build adds a bounded `dsp0-host-causal.csv` across the first
+post-divergence host transactions and a low-volume `dsp0-link-causal.csv` from
+the later note. Run with `-SettleTrace -FocusMs 25 -ClockTimeline -DispatchTrace
+-IrqdTrace -CausalTrace`. The host file records word/command entry and
+write/drop with DSP0 cycle, PC, transaction counts, IRQD deadline, pending and
+ESSI due state. The link file records initial, periodic and first nonzero
+DSP0-to-DSP1 samples alongside `X:$1D–$1F`. Compare the host sequence by
+transaction count and value, not absolute cycle alone. The matched audio gates
+remain mandatory.
+
 ## Overlapping-note capture
 
 The same bundle can capture two overlapping notes through the G1 MIDI IN path. Run this

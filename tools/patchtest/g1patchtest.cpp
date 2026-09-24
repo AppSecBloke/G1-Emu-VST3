@@ -327,6 +327,14 @@ int main(int argc, char** argv)
 
 	for(uint32_t d = 0; d < g1::g_dspCount; ++d)
 		mc.getDsp(d).resetLinkPeak();
+#ifdef G1_DSP_TRACE
+	if(const char* linkPath = std::getenv("G1_DSP_CAUSAL_LINK_TRACE_FILE"))
+		if(!mc.getDsp(0).armCausalLinkTrace(linkPath))
+		{
+			std::fprintf(stderr, "Could not arm the DSP0 causal link trace.\n");
+			return 2;
+		}
+#endif
 	// G1_PCWATCH=174,194: how many times each DSP goes through those addresses during the note
 	// (only counted at the start of a JIT block: fine for loops and branches).
 	std::vector<uint32_t> watch;

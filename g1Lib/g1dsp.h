@@ -58,6 +58,7 @@ namespace g1
 		bool armStartupWatch(const char* _path);
 		void startupCheckpoint(const char* _stage);
 		bool armSettleTrace(const char* _path);
+		bool armCausalLinkTrace(const char* _path);
 		void settleSample(uint64_t _ucCycles, uint64_t _cpuHostAccesses);
 #endif
 		uint64_t hostCommands() const { return m_hostCommands; }
@@ -187,6 +188,9 @@ namespace g1
 		std::ofstream m_settleEvents;
 		std::ofstream m_settleHostBlocks;
 		std::ofstream m_settleHostWaits;
+		std::ofstream m_causalLinkTrace;
+		uint64_t m_causalLinkCount = 0;
+		bool m_causalFirstNonzero = false;
 		std::array<uint64_t, static_cast<size_t>(RunCause::Count)> m_settleCalls{}, m_settleCycles{};
 		std::map<uint32_t, uint64_t> m_settlePcs;
 		uint64_t m_settleBlocks = 0, m_settleMaxBlockCycles = 0;
