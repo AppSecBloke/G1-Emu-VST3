@@ -197,6 +197,22 @@ CSV does not by itself mean all requests occurred in one clock interval. Use
 the same `-SettleTrace -FocusMs 25`
 command and audio acceptance checks. No timing or execution policy is changed.
 
+The `squareclocktimeline` build adds a low-volume DSP0 clock timeline spanning
+the 2OSC patch upload through host word 195. Run the bundled script with
+`-RomPath 'C:\path\NORD-MODULAR-RACK-VER-3.03.BIN' -SettleTrace -FocusMs 25 -ClockTimeline`.
+Each case gains `dsp0-essi-clock-timeline.csv` and a `.blocks.csv` companion.
+The timeline samples every 8,192 DSP cycles and records first lag-threshold
+crossings, clock configuration changes, large late entries and new catch-up
+high-water marks. It includes base/fine clock anchors, the last scheduling
+cycle and requested delay, the deadline seen at entry, ESSI1 status and the
+prior callback's receive/service counts.
+The companion retains adjacent JIT blocks at anomaly thresholds. The timeline
+also marks each transmitted host word with value 195; its ordinal appears in
+the `previous_entry` column on marker rows. Match those cycles to the existing
+settle event files before comparing Square-32 and Square-1, since multiple
+words can have that value and their absolute DSP cycles need not match. The runner still requires
+Saw-32 audible, Square-32 silent and Square-1 audible.
+
 ## Overlapping-note capture
 
 The same bundle can capture two overlapping notes through the G1 MIDI IN path. Run this

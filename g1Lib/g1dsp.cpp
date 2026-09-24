@@ -2,6 +2,9 @@
 
 #include "mc68k/hdi08.h"
 #include "dsp56kEmu/jit.h"
+#ifdef G1_DSP_TRACE
+#include "g1_essi_trace.h"
+#endif
 
 #include <algorithm>
 #include <cstdlib>
@@ -70,6 +73,10 @@ namespace g1
 		, m_memory(m_validator, g_pMemSize, g_xyMemSize, g_externalMemAddr)
 		, m_dsp(m_memory, &m_periph, &m_periphNop)
 	{
+#ifdef G1_DSP_TRACE
+		if(m_index == 0)
+			dsp56k::g1SetEssiTimelineTarget(reinterpret_cast<uintptr_t>(&m_dsp));
+#endif
 		auto config = m_dsp.getJit().getConfig();
 		config.aguSupportBitreverse = true;
 		config.linkJitBlocks = false;
@@ -622,7 +629,7 @@ namespace g1
 			}
 			const auto before = m_dsp.getCycles();
 #ifdef G1_DSP_TRACE
-			const auto blockPc = m_settleTrace.is_open() ? m_dsp.getPC().toWord() : 0;
+			const auto blockPc = m_dsp.getPC().toWord();
 #endif
 			if(before >= m_nextIrqd)
 			{
@@ -666,6 +673,9 @@ namespace g1
 				onLaChanged();
 			const auto now = m_dsp.getCycles();
 #ifdef G1_DSP_TRACE
+			if(m_index == 0)
+				dsp56k::g1TraceEssiBlock(reinterpret_cast<uintptr_t>(&m_dsp), before, now,
+					blockPc, m_dsp.getPC().toWord());
 			if(m_settleTrace.is_open())
 			{
 				const auto delta = now - before;
@@ -909,6 +919,9 @@ namespace g1
 		hdi08().writeRX(&_word, 1);
 		++m_hostWords;
 #ifdef G1_DSP_TRACE
+		if(_word == 195)
+			dsp56k::g1TraceEssiHostWord195(reinterpret_cast<uintptr_t>(&m_dsp),
+				m_dsp.getCycles(), m_dsp.getPC().toWord());
 		if(_word == 195 && !m_settleHostBlocksTriggered &&
 			m_settleSampleIndex >= static_cast<int32_t>(m_settleFocusMs) &&
 			m_settleSampleIndex <= static_cast<int32_t>(m_settleFocusMs) + 1)

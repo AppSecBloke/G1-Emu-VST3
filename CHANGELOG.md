@@ -7,6 +7,14 @@ Older entries cite their commit by hand.
 
 ## 2026-09-24
 
+- **DSP0 ESSI pre-divergence timeline (Codex; local change, not committed).**
+  Added an opt-in, threshold-sampled DSP0 clock timeline from patch upload through
+  host word 195, with nearby JIT block boundaries. The diagnostic bundle keeps
+  the Saw-32/Square-32/Square-1 audio gates and carries a distinct build ID.
+  Production clock, DMA, interrupt, JIT and host-command behaviour is unchanged.
+  Verification: static diff review and PowerShell 5.1 syntax parse; CI compilation
+  and ROM-backed comparison remain pending.
+
 - **ESSI1 producer diagnostic (Codex; local change, not committed).**
   Extended the opt-in diagnostic overlay with bounded base/fine ESSI clock
   catch-up and receive-slot logging, correlated by DSP identity with the DMA3 interrupt
