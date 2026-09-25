@@ -77,17 +77,17 @@ try {
         $probe = $null
         if ($case.Probe) {
             $probe = [regex]::Match($text, 'deadline probe: long blocks (\d+), multi-instruction long blocks (\d+), short blocks (\d+), IRQD overruns (\d+)')
-            $host = [regex]::Match($text, 'DSP0 host: words (\d+), commands (\d+), serviced \$7E (\d+), serviced \$76 (\d+)')
+            $hostMatch = [regex]::Match($text, 'DSP0 host: words (\d+), commands (\d+), serviced \$7E (\d+), serviced \$76 (\d+)')
             $dropped = [regex]::Match($text, 'DSP0 dropped commands: \$7E (\d+), \$76 (\d+)')
-            if (-not $probe.Success -or -not $host.Success -or -not $dropped.Success) {
+            if (-not $probe.Success -or -not $hostMatch.Success -or -not $dropped.Success) {
                 throw "Missing deadline/host counters; partial data is in $output"
             }
             if ([long]$probe.Groups[1].Value -eq 0 -or [long]$probe.Groups[2].Value -eq 0 -or
                 [long]$probe.Groups[3].Value -eq 0 -or [long]$probe.Groups[4].Value -ne 0) {
                 throw "The probe did not retain multi-instruction blocks or crossed an IRQD deadline; partial data is in $output"
             }
-            if ([long]$host.Groups[1].Value -le 4211 -or [long]$host.Groups[2].Value -le 4395 -or
-                [long]$host.Groups[3].Value -eq 0 -or [long]$host.Groups[4].Value -eq 0 -or
+            if ([long]$hostMatch.Groups[1].Value -le 4211 -or [long]$hostMatch.Groups[2].Value -le 4395 -or
+                [long]$hostMatch.Groups[3].Value -eq 0 -or [long]$hostMatch.Groups[4].Value -eq 0 -or
                 [long]$dropped.Groups[1].Value -ne 0 -or [long]$dropped.Groups[2].Value -ne 0) {
                 throw "Square-32 host traffic did not recover; partial data is in $output"
             }

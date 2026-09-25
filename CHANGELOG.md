@@ -7,6 +7,27 @@ Older entries cite their commit by hand.
 
 ## 2026-09-25
 
+- **Four-voice two-oscillator diagnostic fixture (Codex; local change, not committed).**
+  Added `Simple2OSC-4Voice.pch` with exactly one change from `Simple2OSC.pch`:
+  requested voice count 1 to 4. Verification: line-by-line comparison found
+  only the header value changed; NME-backed `g1patchtest` parsed and serialized
+  the patch, uploaded it in one packet with PID 1, showed `( 4)`, and measured
+  nonzero stereo output and DSP links. File-to-file `.pch` save/reload remains
+  unavailable locally.
+
+- **Minimal two-oscillator patch fixture (Codex; local change, not committed).**
+  Added `Simple2OSC.pch` from the SimpleOSC header/output settings with a
+  second Saw OscA, fine detune 66, and a two-input Osc Mixer feeding both
+  normal output channels. Verification: the existing NME-backed `g1patchtest`
+  parsed and serialized the patch, uploaded it in one packet with PID 1, and
+  measured nonzero stereo audio and DSP links using the 3.03 ROM. A file-to-file
+  `.pch` save/reload round trip was unavailable locally.
+
+- **PowerShell 5.1 deadline-runner fix (Codex; local change, not committed).**
+  Renamed the diagnostic host-match variable to avoid PowerShell's read-only
+  `$Host` automatic variable. Verification: PowerShell 5.1 syntax and a focused
+  assignment smoke test; full ROM-backed run remains pending.
+
 - **DSP0 deadline-aware JIT return prototype (Codex; local change, not committed).**
   Added an opt-in diagnostic DSP-core overlay that selects one-instruction
   blocks near pending dispatch/peripheral/IRQD deadlines and immediately after
