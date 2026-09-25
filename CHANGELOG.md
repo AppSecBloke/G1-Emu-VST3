@@ -7,6 +7,14 @@ Older entries cite their commit by hand.
 
 ## 2026-09-25
 
+- **Bounded VST per-note event trace (Codex; local change, not committed).**
+  Added an opt-in, at-most-64-message diagnostic log correlating submitted MIDI
+  bytes, firmware SCI reads, DSP0 host-word/interrupt and selected routine-entry
+  markers, and 120 ms DSP0→DSP1 link summaries by event ID. It records existing
+  behaviour without changing MIDI delivery or DSP scheduling. Verification:
+  static diff and whitespace checks; local MSVC/CMake is unavailable, so the
+  manual Windows diagnostic workflow must compile it before runtime capture.
+
 - **Passive VST patch-load call trace (Codex; local change, not committed).**
   Added an opt-in entry/completion record for each `loadPatchLocked` call,
   identifying button versus state-restore origin, path, CPU/DSP cycles and

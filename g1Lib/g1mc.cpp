@@ -4,6 +4,9 @@
 
 #include <algorithm>
 #include <cstdlib>
+#ifdef G1_DSP_TRACE
+#include "g1_note_event_trace.h"
+#endif
 
 // The spin hint the worker threads use while they wait for the next block. __builtin_ia32_pause
 // is GCC and Clang's; MSVC has no such builtin, and _M_X64 is defined there too, so guarding by
@@ -248,7 +251,15 @@ namespace g1
 			return mc68k::memoryOps::readU16(m_mem.data(), addr);
 		if(isInternalPeripheral(addr))
 		{
-			if(addr == 0xfffc0e) ++m_sciDataReads;
+			if(addr == 0xfffc0e)
+			{
+				++m_sciDataReads;
+				const auto value = Mc68k::read16(addr);
+#ifdef G1_DSP_TRACE
+				noteEventTrace().sciRead(this, m_ucCycles, getPC(), static_cast<uint8_t>(value));
+#endif
+				return value;
+			}
 			return Mc68k::read16(addr);
 		}
 		if(isHostPort(addr))
@@ -272,7 +283,15 @@ namespace g1
 			return m_mem[addr];
 		if(isInternalPeripheral(addr))
 		{
-			if(addr == 0xfffc0e || addr == 0xfffc0f) ++m_sciDataReads;
+			if(addr == 0xfffc0e || addr == 0xfffc0f)
+			{
+				++m_sciDataReads;
+				const auto value = Mc68k::read8(addr);
+#ifdef G1_DSP_TRACE
+				noteEventTrace().sciRead(this, m_ucCycles, getPC(), value);
+#endif
+				return value;
+			}
 			return Mc68k::read8(addr);
 		}
 		if(isHostPort(addr))

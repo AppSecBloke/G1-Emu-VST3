@@ -3,6 +3,7 @@
 #include "mc68k/hdi08.h"
 #include "dsp56kEmu/jit.h"
 #ifdef G1_DSP_TRACE
+#include "g1_note_event_trace.h"
 #include "g1_essi_trace.h"
 #include "g1_output_trace.h"
 #include <optional>
@@ -168,6 +169,10 @@ namespace g1
 		hdi08().setHostCommandArbitration(false);
 		m_dsp.setInterruptServicedCallback([this](const dsp56k::TWord _vba)
 		{
+		#ifdef G1_DSP_TRACE
+			if(m_index == 0)
+				noteEventTrace().interrupt(&m_dsp, m_dsp.getCycles(), m_dsp.getPC().toWord(), _vba);
+		#endif
 			++m_servicedVectors[_vba];
 			m_lastVector = _vba;
 #ifdef G1_DSP_TRACE
@@ -731,6 +736,8 @@ namespace g1
 			const auto before = m_dsp.getCycles();
 #ifdef G1_DSP_TRACE
 			const auto blockPc = m_dsp.getPC().toWord();
+			if(m_index == 0)
+				noteEventTrace().boundary(&m_dsp, before, blockPc);
 			const auto compareInstructions = m_noteCompareTrace.is_open() ? m_dsp.getInstructionCounter() : 0;
 			const auto compareMode = m_noteCompareTrace.is_open() ? static_cast<unsigned>(m_dsp.getProcessingMode()) : 0;
 			const auto comparePending = m_noteCompareTrace.is_open() && m_dsp.hasPendingInterrupts();
@@ -899,6 +906,8 @@ namespace g1
 			b.words[9 + i] = mem.get(dsp56k::MemArea_Y, p1 + i);
 		}
 #ifdef G1_DSP_TRACE
+		if(m_index == 0)
+			noteEventTrace().link(&m_dsp, m_dsp.getCycles(), b.index, b.words[0], b.words[1]);
 		if(m_index == 0)
 			dsp56k::g1OutputTraceLink(m_dsp, b.index, p0, p1, b.words[0], b.words[1]);
 #endif
@@ -1132,6 +1141,8 @@ namespace g1
 		hdi08().writeRX(&_word, 1);
 		++m_hostWords;
 #ifdef G1_DSP_TRACE
+		if(m_index == 0)
+			noteEventTrace().hostWord(&m_dsp, m_dsp.getCycles(), m_dsp.getPC().toWord(), _word);
 		if(m_index == 0)
 			dsp56k::g1TraceCausalHost("word_written", m_dsp, _word,
 				m_hostWords, m_hostCommands, m_nextIrqd, hdi08().hasRXData());
