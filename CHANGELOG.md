@@ -7,6 +7,13 @@ Older entries cite their commit by hand.
 
 ## 2026-09-25
 
+- **Passive VST patch-load call trace (Codex; local change, not committed).**
+  Added an opt-in entry/completion record for each `loadPatchLocked` call,
+  identifying button versus state-restore origin, path, CPU/DSP cycles and
+  returned PID. It does not change upload or restore behaviour. Verification:
+  call-site and diff review plus `git diff --check`; compilation awaits the
+  existing manual Windows diagnostic workflow because MSVC/CMake is absent.
+
 - **Bounded DSP0 VST note trace (Codex; local change, not committed).**
   Added opt-in, 120 ms DSP0 link and JIT/interrupt-state recording at the first
   MIDI note in the VST, plus the same recorder in `g1patchtest` for alignment.

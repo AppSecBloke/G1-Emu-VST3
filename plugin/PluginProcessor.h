@@ -56,7 +56,8 @@ private:
     void advanceTo(uint64_t); void resetMachine(const std::vector<uint8_t>&,const std::vector<uint8_t>* =nullptr);
     void sendLiveParameter(int,int,int,int);
     static bool readAndValidateRom(const juce::File&,std::vector<uint8_t>&,juce::String&);
-    bool loadPatchLocked(const juce::File&, juce::String&, const juce::XmlElement* overlay = nullptr);
+    bool loadPatchLocked(const juce::File&, juce::String&, const juce::XmlElement* overlay,
+                         const char* origin);
     void invalidatePatchLocked();
     bool discoverParametersLocked(Patch&, std::vector<ParameterView>&, juce::String&) const;
     bool applyOverlayLocked(Patch&, const std::vector<ParameterView>&,
@@ -81,6 +82,7 @@ private:
     std::unique_ptr<g1::Microcontroller> mc; std::vector<uint8_t> romBytes; juce::String currentRomPath,currentPatchPath;
 #ifdef G1_DSP_TRACE
     bool noteCompareArmed = false;
+    uint64_t patchLoadTraceSequence = 0;
 #endif
     double hostRate=48000.0,emuTimeCycles=0.0; float gain=std::pow(10.0f,36.0f/20.0f);
     std::vector<std::array<float,4>> native; mutable std::mutex machineMutex;

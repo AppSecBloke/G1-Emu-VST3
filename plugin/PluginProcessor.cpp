@@ -13,6 +13,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#ifdef G1_DSP_TRACE
+#include <fstream>
+#endif
 namespace{constexpr int32_t dc=0x155;constexpr float scale24=1.0f/8388608.0f;constexpr uint64_t g_ms=g1::g_ucClock/1000;void runFor(g1::Microcontroller&mc,uint64_t cycles){auto end=mc.ucCycles()+cycles;while(mc.ucCycles()<end)mc.exec();}std::vector<uint8_t>transact(g1::Microcontroller&mc,const std::vector<uint8_t>&msg,uint32_t timeoutMs=300){mc.getPcPort().receive(msg);std::vector<uint8_t>out;for(uint32_t t=0;t<timeoutMs;++t){runFor(mc,g_ms);mc.getPcPort().takeTx(out);if(!out.empty()&&out.back()==0xf7){runFor(mc,5*g_ms);mc.getPcPort().takeTx(out);return out;}}return out;}std::vector<uint8_t>checksum(std::vector<uint8_t>m){uint32_t s=0;for(auto b:m)s+=b;m.push_back((uint8_t)(s&0x7f));m.push_back(0xf7);return m;}}
 namespace
 {
@@ -20,6 +23,20 @@ namespace
     constexpr int build7StateMagic = 0x47314537;
     constexpr int maxPatchBytes = 4 * 1024 * 1024;
     constexpr int maxStateBytes = 16 * 1024 * 1024;
+
+#ifdef G1_DSP_TRACE
+    void tracePatchLoad(const char* event, uint64_t call, const char* origin,
+                        const juce::File& file, uint64_t cpuCycle, uint64_t dspCycle, int pid)
+    {
+        const char* path = std::getenv("G1_VST_PATCH_LOAD_TRACE_FILE");
+        if (!path || !*path) return;
+        std::ofstream out(path, std::ios::app);
+        if (out)
+            out << event << '\t' << call << '\t' << origin << '\t'
+                << file.getFullPathName().toStdString() << '\t' << cpuCycle
+                << '\t' << dspCycle << '\t' << pid << '\n';
+    }
+#endif
 
 }
 
@@ -145,15 +162,22 @@ bool G1PluginProcessor::loadPatch(const juce::File& file, juce::String& error)
 {
     ProcessingPause pause(*this);
     std::lock_guard lock(machineMutex);
-    const bool ok = loadPatchLocked(file, error);
+    const bool ok = loadPatchLocked(file, error, nullptr, "button");
     if (!ok)
         lastStatus = error;
     return ok;
 }
 
 bool G1PluginProcessor::loadPatchLocked(const juce::File& file, juce::String& error,
-                                       const juce::XmlElement* overlay)
+                                       const juce::XmlElement* overlay, const char* origin)
 {
+#ifdef G1_DSP_TRACE
+    const auto traceCall = ++patchLoadTraceSequence;
+    tracePatchLoad("entry", traceCall, origin, file, mc ? mc->ucCycles() : 0,
+                   mc ? mc->getDsp(0).dsp().getCycles() : 0, -1);
+#else
+    (void)origin;
+#endif
     if (!mc) { error = "Load the ROM first."; return false; }
     if (!catalogueReady) { error = "Could not load embedded modules.xml."; return false; }
     juce::MemoryBlock before, after;
@@ -224,6 +248,10 @@ bool G1PluginProcessor::loadPatchLocked(const juce::File& file, juce::String& er
     currentPatchPath = file.getFullPathName();
     sourcePatchHash = hash;
     currentPatchPid = pid;
+#ifdef G1_DSP_TRACE
+    tracePatchLoad("complete", traceCall, origin, file, mc->ucCycles(),
+                   mc->getDsp(0).dsp().getCycles(), pid);
+#endif
     activePatch = std::move(candidate);
     int aliasMatches = 0;
     for (auto view : views)
@@ -511,7 +539,7 @@ void G1PluginProcessor::setStateInformation(const void* data, int size)
     if (savedPatchPath.isNotEmpty())
     {
         // Overlay values become part of the upload itself, never post-load edits.
-        if (!loadPatchLocked(juce::File(savedPatchPath), error, overlay.get()))
+        if (!loadPatchLocked(juce::File(savedPatchPath), error, overlay.get(), "state_restore"))
             lastStatus = "Session ROM restored, but patch restoration failed: " + error;
         else
             lastStatus = "Session restored, including patch parameter values.";
