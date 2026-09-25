@@ -67,6 +67,7 @@ namespace g1
 		void startupCheckpoint(const char* _stage);
 		bool armSettleTrace(const char* _path);
 		bool armCausalLinkTrace(const char* _path);
+		bool armNoteCompareTrace(const char* _path, uint64_t _ucCycles, int _note);
 		void vector7eProbeRecord(const char* _event);
 		void settleSample(uint64_t _ucCycles, uint64_t _cpuHostAccesses);
 #endif
@@ -202,6 +203,8 @@ namespace g1
 		std::ofstream m_settleHostBlocks;
 		std::ofstream m_settleHostWaits;
 		std::ofstream m_causalLinkTrace;
+		std::ofstream m_noteCompareTrace;
+		uint64_t m_noteCompareEnd = 0, m_noteCompareJitRows = 0, m_noteCompareLinkRows = 0;
 		std::ofstream m_vector7eTrace, m_vector7eWrites;
 		std::array<dsp56k::TWord, 0x800> m_vector7eX{}, m_vector7eY{}, m_vector7eP{};
 		bool m_vector7eActive = false, m_vector7eSnapshotValid = false;

@@ -402,6 +402,22 @@ namespace g1
 		return true;
 	}
 
+	bool Dsp::armNoteCompareTrace(const char* _path, const uint64_t _ucCycles, const int _note)
+	{
+		if(m_index != 0 || !_path || !*_path || m_noteCompareTrace.is_open()) return false;
+		m_noteCompareTrace.open(_path, std::ios::out | std::ios::trunc);
+		if(!m_noteCompareTrace) return false;
+		m_noteCompareEnd = m_dsp.getCycles() + 120u * 864u * 96u; // 120 ms at 96 kHz, 864 DSP cycles/frame.
+		m_noteCompareJitRows = m_noteCompareLinkRows = 0;
+		m_noteCompareTrace << "event,uc_cycle,dsp_cycle,pc,next_pc,instructions,mode,pending,last_vector,next_irqd,irqd_count,host_words,host_commands,block,link0,link1,x1d,x1e,x1f,note,pre_mode,pre_pending\n";
+		m_noteCompareTrace << "note," << _ucCycles << ',' << m_dsp.getCycles() << ','
+			<< m_dsp.getPC().toWord() << ",,0," << static_cast<unsigned>(m_dsp.getProcessingMode())
+			<< ',' << m_dsp.hasPendingInterrupts() << ',' << m_lastVector << ',' << m_nextIrqd
+			<< ',' << m_irqdCount << ',' << m_hostWords << ',' << m_hostCommands
+			<< ",,,,,,," << _note << ",,\n";
+		return true;
+	}
+
 	void Dsp::vector7eProbeRecord(const char* _event)
 	{
 		if(!m_vector7eActive) return;
@@ -715,6 +731,9 @@ namespace g1
 			const auto before = m_dsp.getCycles();
 #ifdef G1_DSP_TRACE
 			const auto blockPc = m_dsp.getPC().toWord();
+			const auto compareInstructions = m_noteCompareTrace.is_open() ? m_dsp.getInstructionCounter() : 0;
+			const auto compareMode = m_noteCompareTrace.is_open() ? static_cast<unsigned>(m_dsp.getProcessingMode()) : 0;
+			const auto comparePending = m_noteCompareTrace.is_open() && m_dsp.hasPendingInterrupts();
 			const bool traceDispatch = m_index == 0 && dsp56k::g1DispatchTraceActive(before);
 #endif
 			if(before >= m_nextIrqd)
@@ -793,6 +812,20 @@ namespace g1
 				onLaChanged();
 			const auto now = m_dsp.getCycles();
 #ifdef G1_DSP_TRACE
+			if(m_noteCompareTrace.is_open() && before <= m_noteCompareEnd && m_noteCompareJitRows++ < 120000)
+			{
+				const auto& mem = m_dsp.memory();
+				m_noteCompareTrace << "jit,," << before << ',' << blockPc << ',' << m_dsp.getPC().toWord()
+					<< ',' << m_dsp.getInstructionCounter() - compareInstructions << ','
+					<< static_cast<unsigned>(m_dsp.getProcessingMode()) << ',' << m_dsp.hasPendingInterrupts()
+					<< ',' << m_lastVector << ',' << m_nextIrqd << ',' << m_irqdCount << ','
+					<< m_hostWords << ',' << m_hostCommands << ",,,,"
+					<< mem.get(dsp56k::MemArea_X, 0x1d) << ','
+					<< mem.get(dsp56k::MemArea_X, 0x1e) << ','
+					<< mem.get(dsp56k::MemArea_X, 0x1f) << "," << compareMode << ',' << comparePending << '\n';
+			}
+			if(m_noteCompareTrace.is_open() && now >= m_noteCompareEnd)
+				m_noteCompareTrace.close();
 			if(m_deadlineProbe)
 			{
 				if(m_deadlineProbeFine) ++m_deadlineProbeShortBlocks;
@@ -875,6 +908,17 @@ namespace g1
 			m_linkPeak[i] = std::max<uint32_t>(m_linkPeak[i], static_cast<uint32_t>(v < 0 ? -v : v));
 		}
 #ifdef G1_DSP_TRACE
+		if(m_noteCompareTrace.is_open() && m_dsp.getCycles() <= m_noteCompareEnd && m_noteCompareLinkRows++ < 12000)
+		{
+			m_noteCompareTrace << "link,," << m_dsp.getCycles() << ',' << m_dsp.getPC().toWord()
+				<< ",,0," << static_cast<unsigned>(m_dsp.getProcessingMode()) << ','
+				<< m_dsp.hasPendingInterrupts() << ',' << m_lastVector << ',' << m_nextIrqd
+				<< ',' << m_irqdCount << ',' << m_hostWords << ',' << m_hostCommands
+				<< ',' << b.index << ',' << b.words[0] << ',' << b.words[1] << ','
+				<< mem.get(dsp56k::MemArea_X, 0x1d) << ','
+				<< mem.get(dsp56k::MemArea_X, 0x1e) << ','
+				<< mem.get(dsp56k::MemArea_X, 0x1f) << ",,,\n";
+		}
 		if(m_causalLinkTrace.is_open())
 		{
 			const bool nonzero = b.words[0] != 0 || b.words[1] != 0;

@@ -1,0 +1,69 @@
+[Header]
+Version=Nord Modular patch 3.0
+0 127 0 127 2 0 0 4 4000 2 0 0 0 0 15 2 1 1 1 1 1 1 1 
+[/Header]
+[ModuleDump]
+1 
+1 7 2 3 
+2 4 14 9 
+3 7 2 13 
+4 19 8 8 
+5 49 11 8 
+6 1 2 20 
+7 20 13 16 
+[/ModuleDump]
+[ModuleDump]
+0 
+[/ModuleDump]
+[CurrentNoteDump]
+64 0 0 64 0 0 
+[/CurrentNoteDump]
+[CableDump]
+1 
+0 4 0 0 1 0 1 
+0 4 1 0 3 0 1 
+0 5 1 0 4 0 1 
+0 7 0 0 5 2 1 
+0 7 1 0 6 1 1 
+0 2 0 0 7 1 1 
+0 2 1 0 7 1 1 
+[/CableDump]
+[CableDump]
+0 
+[/CableDump]
+[ParameterDump]
+1 
+1 7 10 64 64 64 64 2 0 0 0 0 0 
+2 4 3 100 0 0 
+3 7 10 64 66 64 64 2 0 0 0 0 0 
+4 19 3 100 100 0 
+5 49 4 70 64 78 40 
+6 1 0 
+7 20 6 0 35 45 85 52 0 
+[/ParameterDump]
+[ParameterDump]
+0 
+[/ParameterDump]
+[MorphMapDump]
+0 0 0 0 
+[/MorphMapDump]
+[KeyboardAssignment]
+0 0 0 0 
+[/KeyboardAssignment]
+[KnobMapDump]
+[/KnobMapDump]
+[CtrlMapDump]
+[/CtrlMapDump]
+[NameDump]
+1 
+1 OSC1
+2 2Output
+3 OSC2
+4 Osc Mixer
+5 FilterD
+6 Keyboard
+7 ADSR
+[/NameDump]
+[NameDump]
+0 
+[/NameDump]

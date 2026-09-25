@@ -7,6 +7,37 @@ Older entries cite their commit by hand.
 
 ## 2026-09-25
 
+- **Bounded DSP0 VST note trace (Codex; local change, not committed).**
+  Added opt-in, 120 ms DSP0 link and JIT/interrupt-state recording at the first
+  MIDI note in the VST, plus the same recorder in `g1patchtest` for alignment.
+  The manual diagnostic workflow now packages an instrumented VST3 and the
+  stored-OSC2-Square fixture. The deadline probe remains off. Verification:
+  source diff and whitespace check only; no local MSVC/CMake is installed, so
+  CI compilation and the Gig Performer capture remain pending.
+
+- **Stored OSC2 Square isolation fixture (Codex; local change, not committed).**
+  Added `Simple2OSC-FilterD-ADSR-OSC2Square-4Voice.pch` with only OSC2's
+  stored waveform changed from Saw (2) to Square (3). Verification: NME-backed
+  `g1patchtest` parsed and serialized it, uploaded it in two packets with PID 1,
+  reported `( 4)`, and produced stereo output during a 0.1 s note capture.
+  The source patch remains unchanged.
+
+- **Keyboard-gated ADSR isolation fixture (Codex; local change, not committed).**
+  Added `Simple2OSC-FilterD-ADSR-4Voice.pch` from the FilterD fixture with a
+  Keyboard module, the WobbleVoice ADSR settings, gate cable, and FilterD →
+  ADSR → stereo 2Output routing. No velocity, LFO or filter-modulation cable
+  was added. Verification: NME-backed `g1patchtest` parsed and serialized the
+  patch, uploaded it in two packets with PID 1, showed `( 4)`, and produced
+  nonzero DSP links and stereo output during a short note capture.
+
+- **Isolated FilterD stage fixture (Codex; local change, not committed).**
+  Added `Simple2OSC-FilterD-4Voice.pch`, retaining the four-voice two-OscA
+  mixer fixture while inserting one FilterD between mixer and stereo 2Output.
+  FilterD uses the existing WobbleVoice settings; no keyboard, envelope, LFO
+  or modulation cable was added. Verification: NME-backed `g1patchtest` parsed
+  and serialized the patch, uploaded it in two packets with PID 1 and displayed
+  `( 4)`; a separate `.pch` file save/reload round trip was unavailable locally.
+
 - **Four-voice two-oscillator diagnostic fixture (Codex; local change, not committed).**
   Added `Simple2OSC-4Voice.pch` with exactly one change from `Simple2OSC.pch`:
   requested voice count 1 to 4. Verification: line-by-line comparison found

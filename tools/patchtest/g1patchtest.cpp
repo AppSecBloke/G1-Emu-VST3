@@ -409,6 +409,14 @@ int main(int argc, char** argv)
 	blocks.clear();
 	capture = true;
 #ifdef G1_DSP_TRACE
+	if(const char* comparePath = std::getenv("G1_NOTE_COMPARE_TRACE_FILE"))
+		if(!mc.getDsp(0).armNoteCompareTrace(comparePath, mc.ucCycles(), note))
+		{
+			std::fprintf(stderr, "Could not open DSP0 note-comparison trace.\n");
+			return 2;
+		}
+#endif
+#ifdef G1_DSP_TRACE
 	mc.getDsp(0).startupCheckpoint("before_note");
 #endif
 	// Note through the PC Port, like NME: cc $17, 56 00 note (press) ... 56 01 note (release).

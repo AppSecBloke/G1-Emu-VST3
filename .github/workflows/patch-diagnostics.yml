@@ -104,8 +104,8 @@ jobs:
             throw 'The output-write observer is not in the compiled DSP source overlay.'
           }
 
-      - name: Build tools only
-        run: cmake --build diagnostic-build --config Release --parallel --target g1patchtest dspdis g1dspcheck
+      - name: Build diagnostic tools and VST3
+        run: cmake --build diagnostic-build --config Release --parallel --target g1patchtest dspdis g1dspcheck g1vst3_VST3
 
       - name: Check DSP extensions without a ROM
         run: ctest --test-dir diagnostic-build -C Release -L g1 --output-on-failure
@@ -114,6 +114,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path diagnostic-bundle | Out-Null
           Copy-Item diagnostic-build/tools/patchtest/g1patchtest_artefacts/Release/g1patchtest.exe diagnostic-bundle/
+          Copy-Item -Recurse diagnostic-build/plugin/g1vst3_artefacts/Release/VST3/G1-Emu.vst3 diagnostic-bundle/
           Copy-Item diagnostic-build/tools/Release/dspdis.exe diagnostic-bundle/
           Copy-Item G1-Emu/tools/patchtest/run-matched.ps1 diagnostic-bundle/
           Copy-Item G1-Emu/tools/patchtest/run-square-trace.ps1 diagnostic-bundle/
@@ -125,6 +126,7 @@ jobs:
           Copy-Item G1-Emu/SimpleOSC.pch diagnostic-bundle/
           Copy-Item G1-Emu/WobbleVoice-4Voice.pch diagnostic-bundle/
           Copy-Item G1-Emu/WobbleVoice-2Osc-4Voice.pch diagnostic-bundle/
+          Copy-Item G1-Emu/Simple2OSC-FilterD-ADSR-OSC2Square-4Voice.pch diagnostic-bundle/
           Copy-Item Animatek-NME/data/modules.xml diagnostic-bundle/
           Copy-Item G1-Emu/docs/patch-diagnostics.md diagnostic-bundle/README.md
           Copy-Item G1-Emu/LICENSE diagnostic-bundle/
@@ -146,10 +148,11 @@ jobs:
             juce = (git -C JUCE rev-parse HEAD)
             nme = (git -C Animatek-NME rev-parse HEAD)
             submodules = @(git -C gearmulator-md-mm submodule status --recursive)
-            configuration = 'Release, x64, static MSVC runtime, CMPM overlay, opt-in DSP0 deadline-aware JIT return probe with normal maximum block size 32'
+            configuration = 'Release, x64, static MSVC runtime, CMPM overlay, opt-in bounded VST DSP0 note trace; normal maximum block size 32; deadline probe disabled unless explicitly requested at runtime'
             runnerImage = $env:ImageVersion
             runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
             executableSha256 = (Get-FileHash diagnostic-bundle/g1patchtest.exe -Algorithm SHA256).Hash
+            vst3Sha256 = (Get-FileHash diagnostic-bundle/G1-Emu.vst3/Contents/x86_64-win/G1-Emu.vst3 -Algorithm SHA256).Hash
             cmake = (cmake --version | Select-Object -First 1)
           }
           $info | ConvertTo-Json -Depth 5 | Set-Content diagnostic-bundle/build-info.json -Encoding UTF8

@@ -79,6 +79,9 @@ private:
     ParameterAddress lastEditAddress;
     int lastEditValue = 0;
     std::unique_ptr<g1::Microcontroller> mc; std::vector<uint8_t> romBytes; juce::String currentRomPath,currentPatchPath;
+#ifdef G1_DSP_TRACE
+    bool noteCompareArmed = false;
+#endif
     double hostRate=48000.0,emuTimeCycles=0.0; float gain=std::pow(10.0f,36.0f/20.0f);
     std::vector<std::array<float,4>> native; mutable std::mutex machineMutex;
     // Guarded by JUCE's callback lock, never by machineMutex.
