@@ -8,10 +8,12 @@ Older entries cite their commit by hand.
 ## 2026-09-25
 
 - **Bounded VST per-note event trace (Codex; local change, not committed).**
-  Added an opt-in, at-most-64-message diagnostic log correlating submitted MIDI
-  bytes, firmware SCI reads, DSP0 host-word/interrupt and selected routine-entry
-  markers, and 120 ms DSP0→DSP1 link summaries by event ID. It records existing
-  behaviour without changing MIDI delivery or DSP scheduling. Verification:
+  Added an opt-in, at-most-64-message diagnostic log correlating pre-submission
+  monotonic host timestamps, submitted MIDI bytes, firmware SCI reads, DSP0
+  host-word/interrupt and selected routine-entry markers, and isolated 30 ms
+  note-on DSP0→DSP1 link summaries by event ID. A later note event closes the
+  previous window as overlapped. It records existing behaviour without changing
+  MIDI delivery or DSP scheduling. Verification:
   static diff and whitespace checks; local MSVC/CMake is unavailable, so the
   manual Windows diagnostic workflow must compile it before runtime capture.
 

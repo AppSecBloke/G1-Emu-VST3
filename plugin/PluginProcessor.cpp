@@ -15,6 +15,7 @@
 #include <cstdlib>
 #ifdef G1_DSP_TRACE
 #include "g1Lib/g1_note_event_trace.h"
+#include <chrono>
 #include <fstream>
 #endif
 namespace{constexpr int32_t dc=0x155;constexpr float scale24=1.0f/8388608.0f;constexpr uint64_t g_ms=g1::g_ucClock/1000;void runFor(g1::Microcontroller&mc,uint64_t cycles){auto end=mc.ucCycles()+cycles;while(mc.ucCycles()<end)mc.exec();}std::vector<uint8_t>transact(g1::Microcontroller&mc,const std::vector<uint8_t>&msg,uint32_t timeoutMs=300){mc.getPcPort().receive(msg);std::vector<uint8_t>out;for(uint32_t t=0;t<timeoutMs;++t){runFor(mc,g_ms);mc.getPcPort().takeTx(out);if(!out.empty()&&out.back()==0xf7){runFor(mc,5*g_ms);mc.getPcPort().takeTx(out);return out;}}return out;}std::vector<uint8_t>checksum(std::vector<uint8_t>m){uint32_t s=0;for(auto b:m)s+=b;m.push_back((uint8_t)(s&0x7f));m.push_back(0xf7);return m;}}
@@ -373,9 +374,14 @@ void G1PluginProcessor::processBlock(juce::AudioBuffer<float>&buffer,juce::MidiB
                 lastStatus = "Could not open DSP0 note trace file.";
         }
 #endif
-}auto*p=msg.getRawData();int sz=msg.getRawDataSize();if(p&&sz>0){mc->getSci().write(std::vector<uint8_t>(p,p+sz));
+}auto*p=msg.getRawData();int sz=msg.getRawDataSize();if(p&&sz>0){
 #ifdef G1_DSP_TRACE
-    g1::noteEventTrace().submit(mc.get(), &mc->getDsp(0).dsp(), mc->ucCycles(),
+    const auto hostNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+#endif
+    mc->getSci().write(std::vector<uint8_t>(p,p+sz));
+#ifdef G1_DSP_TRACE
+    g1::noteEventTrace().submit(mc.get(), &mc->getDsp(0).dsp(), hostNs, mc->ucCycles(),
         mc->getDsp(0).dsp().getCycles(), p, sz,
         (msg.isNoteOn() || msg.isNoteOff()) ? msg.getNoteNumber() : -1, msg.isNoteOn());
 #endif

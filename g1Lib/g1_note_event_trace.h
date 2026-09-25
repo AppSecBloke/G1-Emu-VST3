@@ -18,8 +18,8 @@ namespace g1
 	public:
 		bool active() const { return m_active.load(std::memory_order_relaxed); }
 
-		void submit(const void* mc, const void* dsp, uint64_t uc, uint64_t cycle,
-			const uint8_t* bytes, int size, int note, bool on)
+		void submit(const void* mc, const void* dsp, uint64_t hostNs,
+			uint64_t uc, uint64_t cycle, const uint8_t* bytes, int size, int note, bool on)
 		{
 			std::lock_guard lock(m_mutex);
 			if(!m_out.is_open())
@@ -35,8 +35,14 @@ namespace g1
 			m_mc = mc;
 			m_dsp = dsp;
 			const auto id = ++m_nextId;
+			if(note >= 0)
+			{
+				for(const auto& w : m_windows)
+					endWindow(w, cycle, "overlapped_by=", id);
+				m_windows.clear();
+			}
 			m_out << "submit\t" << id << '\t' << uc << '\t' << cycle << "\t\t" << note
-				<< "\ton=" << on << ";bytes=";
+				<< "\thost_ns=" << hostNs << ";on=" << on << ";bytes=";
 			for(int i = 0; i < size; ++i)
 			{
 				if(i) m_out << ',';
@@ -44,8 +50,8 @@ namespace g1
 				m_pending.push_back({id, bytes[i]});
 			}
 			m_out << '\n';
-			if(note >= 0)
-				m_windows.push_back({id, note, cycle, cycle + 120u * 864u * 96u});
+			if(on && note >= 0)
+				m_windows.push_back({id, note, cycle, cycle + 30u * 864u * 96u});
 			m_active.store(true, std::memory_order_relaxed);
 		}
 
@@ -122,13 +128,7 @@ namespace g1
 			{
 				if(cycle > it->end)
 				{
-					m_out << "window_end\t" << it->id << "\t\t" << cycle << "\t\t"
-						<< it->note << "\tsci_reads=" << it->sciReads
-						<< ";host_words=" << it->hostWords << ";host_word31=" << it->hostWord31
-						<< ";note_pc_entries=" << it->notePcEntries
-						<< ";host_interrupts=" << it->hostInterrupts
-						<< ";link_blocks=" << it->linkBlocks << ";link_peak=" << it->linkPeak
-						<< ";first_nonzero_cycle=" << it->firstNonzero << '\n';
+					endWindow(*it, cycle, "complete", 0);
 					m_out.flush();
 					it = m_windows.erase(it);
 					continue;
@@ -164,13 +164,7 @@ namespace g1
 			for(auto it = m_windows.begin(); it != m_windows.end();)
 			{
 				if(cycle <= it->end) { ++it; continue; }
-				m_out << "window_end\t" << it->id << "\t\t" << cycle << "\t\t"
-					<< it->note << "\tsci_reads=" << it->sciReads
-					<< ";host_words=" << it->hostWords << ";host_word31=" << it->hostWord31
-					<< ";note_pc_entries=" << it->notePcEntries
-					<< ";host_interrupts=" << it->hostInterrupts
-					<< ";link_blocks=" << it->linkBlocks << ";link_peak=" << it->linkPeak
-					<< ";first_nonzero_cycle=" << it->firstNonzero << '\n';
+				endWindow(*it, cycle, "complete", 0);
 				it = m_windows.erase(it);
 			}
 			m_out.flush();
@@ -188,6 +182,18 @@ namespace g1
 			uint32_t linkBlocks = 0, linkPeak = 0;
 			uint64_t firstNonzero = 0;
 		};
+		void endWindow(const Window& w, uint64_t cycle, const char* reason, uint32_t nextId)
+		{
+			m_out << "window_end\t" << w.id << "\t\t" << cycle << "\t\t"
+				<< w.note << "\t" << reason;
+			if(nextId) m_out << nextId;
+			m_out << ";sci_reads_at_end=" << w.sciReads
+				<< ";host_words=" << w.hostWords << ";host_word31=" << w.hostWord31
+				<< ";note_pc_entries=" << w.notePcEntries
+				<< ";host_interrupts=" << w.hostInterrupts
+				<< ";link_blocks=" << w.linkBlocks << ";link_peak=" << w.linkPeak
+				<< ";first_nonzero_cycle=" << w.firstNonzero << '\n';
+		}
 		std::mutex m_mutex;
 		std::atomic<bool> m_active{false};
 		std::ofstream m_out;
